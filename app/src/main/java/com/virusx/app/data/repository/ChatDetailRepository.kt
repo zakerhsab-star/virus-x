@@ -222,12 +222,12 @@ class ChatDetailRepository @Inject constructor(
         runCatching {
             channel.broadcast(
                 event = "typing",
-                message = TypingEventPayload(
-                    chatId = chatId,
-                    userId = userId,
-                    displayName = displayName,
-                    isTyping = isTyping
-                )
+                message = buildJsonObject {
+                    put("chat_id", chatId)
+                    put("user_id", userId)
+                    put("display_name", displayName)
+                    put("is_typing", isTyping)
+                }
             )
         }
     }
