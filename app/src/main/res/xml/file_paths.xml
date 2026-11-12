@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<paths>
+    <cache-path name="voice_notes" path="voice_notes/" />
+    <cache-path name="media_cache" path="." />
+    <files-path name="internal_files" path="." />
+</paths>
