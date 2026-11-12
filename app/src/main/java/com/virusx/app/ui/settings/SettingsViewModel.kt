@@ -1,5 +1,6 @@
 package com.virusx.app.ui.settings
 
+import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.virusx.app.data.remote.dto.ProfileDto
@@ -65,6 +66,32 @@ class SettingsViewModel @Inject constructor(
     fun onDndEnabledChange(enabled: Boolean) = _uiState.update { it.copy(dndEnabled = enabled) }
     fun onDndAutoReplyChange(value: String) = _uiState.update { it.copy(dndAutoReply = value) }
     fun onDndEmergencyKeywordChange(value: String) = _uiState.update { it.copy(dndEmergencyKeyword = value) }
+
+    fun uploadAvatar(uri: Uri) {
+        viewModelScope.launch {
+            _uiState.update { it.copy(isLoading = true, statusMessage = null) }
+            authRepository.uploadUserAvatar(uri).fold(
+                onSuccess = {
+                    val refreshed = authRepository.refreshCurrentUserProfile()
+                    _uiState.update {
+                        it.copy(
+                            profile = refreshed,
+                            isLoading = false,
+                            statusMessage = "تم تحديث الصورة الشخصية بنجاح"
+                        )
+                    }
+                },
+                onFailure = { err ->
+                    _uiState.update {
+                        it.copy(
+                            isLoading = false,
+                            statusMessage = err.localizedMessage ?: "فشل رفع الصورة الشخصية"
+                        )
+                    }
+                }
+            )
+        }
+    }
 
     fun saveProfileInfo() {
         val state = _uiState.value
@@ -148,7 +175,6 @@ class SettingsViewModel @Inject constructor(
         }
     }
 
-    // 5 Taps on Version Number -> Opens Secret Admin Code Dialog
     fun onVersionNumberTapped() {
         val nextCount = _uiState.value.versionTapCount + 1
         if (nextCount >= 5) {

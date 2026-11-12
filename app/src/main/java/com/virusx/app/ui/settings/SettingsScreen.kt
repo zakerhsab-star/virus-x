@@ -1,9 +1,12 @@
 package com.virusx.app.ui.settings
 
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -11,14 +14,17 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Logout
 import androidx.compose.material.icons.filled.AdminPanelSettings
+import androidx.compose.material.icons.filled.CameraAlt
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.NotificationsOff
 import androidx.compose.material.icons.filled.Person
@@ -43,14 +49,17 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
+import coil.compose.AsyncImage
 import com.virusx.app.BuildConfig
 import com.virusx.app.ui.theme.DangerRed
 import com.virusx.app.ui.theme.OnlineGreen
+import com.virusx.app.ui.theme.SentMessageGradient
 import com.virusx.app.ui.theme.TextMuted
 import com.virusx.app.ui.theme.TextPrimary
 import com.virusx.app.ui.theme.TextSecondary
@@ -69,6 +78,14 @@ fun SettingsScreen(
 ) {
     val state by viewModel.uiState.collectAsState()
 
+    val avatarPickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.GetContent()
+    ) { uri ->
+        if (uri != null) {
+            viewModel.uploadAvatar(uri)
+        }
+    }
+
     Scaffold(
         containerColor = VirusXBackground
     ) { paddingValues ->
@@ -80,9 +97,7 @@ fun SettingsScreen(
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically
-            ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
                 IconButton(onClick = onBack) {
                     Icon(
                         imageVector = Icons.AutoMirrored.Filled.ArrowBack,
@@ -110,7 +125,6 @@ fun SettingsScreen(
                 )
             }
 
-            // Super Admin Dashboard Entry (Only visible if role == 'super_admin')
             if (state.profile?.role == "super_admin") {
                 Button(
                     onClick = onOpenSuperAdminPanel,
@@ -128,7 +142,7 @@ fun SettingsScreen(
                 }
             }
 
-            // 1. Profile & Phone Number Card
+            // 1. Profile, Avatar & Phone Number Card
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -136,13 +150,49 @@ fun SettingsScreen(
                     .background(VirusXSurface)
                     .border(1.dp, VirusXGlassBorder, RoundedCornerShape(20.dp))
                     .padding(16.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
                     Icon(Icons.Default.Person, contentDescription = null, tint = VirusXPrimary)
                     Spacer(modifier = Modifier.width(8.dp))
                     Text("الملف الشخصي ورقم الهاتف", style = MaterialTheme.typography.titleLarge)
                 }
+
+                // Avatar Picker Box
+                Box(
+                    modifier = Modifier
+                        .size(88.dp)
+                        .clip(CircleShape)
+                        .background(SentMessageGradient)
+                        .border(2.dp, VirusXSecondaryWhisper, CircleShape)
+                        .clickable { avatarPickerLauncher.launch("image/*") },
+                    contentAlignment = Alignment.Center
+                ) {
+                    if (!state.profile?.avatarUrl.isNullOrBlank()) {
+                        AsyncImage(
+                            model = state.profile?.avatarUrl,
+                            contentDescription = "الصورة الشخصية",
+                            contentScale = ContentScale.Crop,
+                            modifier = Modifier.fillMaxSize()
+                        )
+                    } else {
+                        Icon(
+                            imageVector = Icons.Default.CameraAlt,
+                            contentDescription = "تغيير الصورة",
+                            tint = TextPrimary,
+                            modifier = Modifier.size(32.dp)
+                        )
+                    }
+                }
+                Text(
+                    text = "اضغط على الدائرة لتغيير صورتك الشخصية",
+                    color = VirusXSecondaryWhisper,
+                    fontSize = 12.sp
+                )
 
                 OutlinedTextField(
                     value = state.displayName,

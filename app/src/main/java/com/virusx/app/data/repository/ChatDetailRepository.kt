@@ -273,7 +273,7 @@ class ChatDetailRepository @Inject constructor(
         val objectPath = "$senderId/img_${UUID.randomUUID()}.jpg"
         val bucket = storage.from("chat-media")
         bucket.upload(path = objectPath, data = compressedBytes) {
-            upsert = true
+            upsert = false
         }
 
         val mediaUrl = runCatching {
@@ -318,7 +318,7 @@ class ChatDetailRepository @Inject constructor(
         val objectPath = "$senderId/voice_${UUID.randomUUID()}.m4a"
         val bucket = storage.from("voice-notes")
         bucket.upload(path = objectPath, data = audioBytes) {
-            upsert = true
+            upsert = false
         }
 
         val mediaUrl = runCatching {

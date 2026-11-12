@@ -5,7 +5,6 @@
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
-
     <path
         android:pathData="M54,24 L80,39 L80,69 L54,84 L28,69 L28,39 Z"
         android:fillColor="#151A24"
@@ -22,7 +21,6 @@
             </gradient>
         </aapt:attr>
     </path>
-
     <path android:pathData="M34.5,43.5 L40.5,43.5 L46,59.5 L51.5,43.5 L57,43.5 L48.5,66 L43.5,66 Z">
         <aapt:attr name="android:fillColor">
             <gradient
@@ -36,7 +34,6 @@
             </gradient>
         </aapt:attr>
     </path>
-
     <path android:pathData="M58,43.5 L63.5,43.5 L66.5,51 L69.5,43.5 L75,43.5 L69.5,54.5 L75.5,66 L70,66 L66.5,58 L63,66 L57.5,66 L63.5,54.5 Z">
         <aapt:attr name="android:fillColor">
             <gradient
@@ -50,11 +47,4 @@
             </gradient>
         </aapt:attr>
     </path>
-
-    <path
-        android:fillColor="#06B6D4"
-        android:pathData="M54,21.5 A2.5,2.5 0 1,1 53.99,21.5 Z" />
-    <path
-        android:fillColor="#8B5CF6"
-        android:pathData="M54,81.5 A2.5,2.5 0 1,1 53.99,81.5 Z" />
 </vector>

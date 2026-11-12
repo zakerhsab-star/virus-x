@@ -1,5 +1,9 @@
 package com.virusx.app.data.repository
 
+import android.content.Context
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import android.net.Uri
 import android.os.Build
 import com.virusx.app.data.local.dao.ChatDao
 import com.virusx.app.data.local.dao.MessageDao
@@ -9,17 +13,23 @@ import com.virusx.app.data.remote.dto.ProfileDto
 import com.virusx.app.data.remote.dto.UserPrivateSettingsDto
 import com.virusx.app.util.PinHashUtil
 import com.virusx.app.util.VaultPreferencesManager
+import dagger.hilt.android.qualifiers.ApplicationContext
 import io.github.jan.supabase.auth.Auth
 import io.github.jan.supabase.auth.providers.builtin.Email
 import io.github.jan.supabase.auth.status.SessionStatus
 import io.github.jan.supabase.postgrest.Postgrest
 import io.github.jan.supabase.postgrest.rpc
+import io.github.jan.supabase.storage.Storage
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
+import java.io.ByteArrayOutputStream
 import javax.inject.Inject
 import javax.inject.Singleton
+import kotlin.time.Duration.Companion.days
 
 enum class SignUpResult {
     AUTHENTICATED,
@@ -28,8 +38,10 @@ enum class SignUpResult {
 
 @Singleton
 class AuthRepository @Inject constructor(
+    @ApplicationContext private val context: Context,
     private val auth: Auth,
     private val postgrest: Postgrest,
+    private val storage: Storage,
     private val profileDao: ProfileDao,
     private val chatDao: ChatDao,
     private val messageDao: MessageDao,
@@ -218,6 +230,55 @@ class AuthRepository @Inject constructor(
                     filter { eq("user_id", userId) }
                 }.decodeSingleOrNull<UserPrivateSettingsDto>()
         }.getOrNull()
+    }
+
+    suspend fun uploadUserAvatar(imageUri: Uri): Result<String> = runCatching {
+        val userId = getCurrentUserId() ?: throw IllegalStateException("غير مسجل الدخول")
+
+        val compressedBytes = withContext(Dispatchers.IO) {
+            compressAvatarToJpeg(imageUri)
+        }
+
+        val objectPath = "$userId/avatar_${System.currentTimeMillis()}.jpg"
+        val bucket = storage.from("avatars")
+        bucket.upload(path = objectPath, data = compressedBytes, upsert = false)
+
+        val resolvedUrl = runCatching {
+            bucket.createSignedUrl(path = objectPath, expiresIn = 365.days)
+        }.getOrElse {
+            bucket.publicUrl(objectPath)
+        }
+
+        postgrest.from("profiles").update(
+            buildJsonObject {
+                put("avatar_url", resolvedUrl)
+            }
+        ) {
+            filter { eq("id", userId) }
+        }
+
+        refreshCurrentUserProfile()
+        resolvedUrl
+    }
+
+    private fun compressAvatarToJpeg(uri: Uri): ByteArray {
+        val inputStream = context.contentResolver.openInputStream(uri)
+            ?: throw IllegalArgumentException("تعذر فتح الصورة المختارة")
+        val original = inputStream.use { BitmapFactory.decodeStream(it) }
+            ?: throw IllegalArgumentException("صيغة الصورة غير مدعومة")
+
+        val maxDim = 512
+        val scale = minOf(
+            maxDim.toFloat() / original.width,
+            minOf(maxDim.toFloat() / original.height, 1.0f)
+        )
+        val targetW = (original.width * scale).toInt().coerceAtLeast(1)
+        val targetH = (original.height * scale).toInt().coerceAtLeast(1)
+        val resized = if (scale < 1.0f) Bitmap.createScaledBitmap(original, targetW, targetH, true) else original
+
+        val out = ByteArrayOutputStream()
+        resized.compress(Bitmap.CompressFormat.JPEG, 85, out)
+        return out.toByteArray()
     }
 
     suspend fun updateProfileBasicInfo(

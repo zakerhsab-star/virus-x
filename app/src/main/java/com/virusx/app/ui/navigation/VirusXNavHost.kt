@@ -1,21 +1,8 @@
 package com.virusx.app.ui.navigation
 
-import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.Button
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.ui.Alignment
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
@@ -23,14 +10,13 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.virusx.app.data.repository.AuthRepository
+import com.virusx.app.ui.admin.SuperAdminScreen
 import com.virusx.app.ui.auth.AuthScreen
 import com.virusx.app.ui.chat.ChatScreen
 import com.virusx.app.ui.home.HomeScreen
 import com.virusx.app.ui.home.HomeViewModel
 import com.virusx.app.ui.settings.SettingsScreen
-import com.virusx.app.ui.theme.TextPrimary
-import com.virusx.app.ui.theme.TextSecondary
-import com.virusx.app.ui.theme.VirusXBackground
+import com.virusx.app.ui.stories.StoriesScreen
 import com.virusx.app.ui.vault.VaultScreen
 
 @Composable
@@ -105,43 +91,15 @@ fun VirusXNavHost(
         }
 
         composable("stories") {
-            PlaceholderStageScreen(
-                title = "الحالات التفاعلية (Interactive Stories)",
-                subtitle = "سيتم استكمال نظام الحالات والتصويت والأسئلة المجهولة في Task 5",
+            StoriesScreen(
                 onBack = { navController.popBackStack() }
             )
         }
 
         composable("super_admin") {
-            PlaceholderStageScreen(
-                title = "لوحة تحكم المشرف العام (Super Admin)",
-                subtitle = "سيتم استكمال لوحة الإدارة الشاملة واستعراض أرقام الهواتف والرسائل المحذوفة في Task 5",
+            SuperAdminScreen(
                 onBack = { navController.popBackStack() }
             )
-        }
-    }
-}
-
-@Composable
-private fun PlaceholderStageScreen(
-    title: String,
-    subtitle: String,
-    onBack: () -> Unit
-) {
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(VirusXBackground)
-            .padding(24.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center
-    ) {
-        Text(text = title, style = MaterialTheme.typography.headlineMedium, color = TextPrimary)
-        Spacer(modifier = Modifier.height(8.dp))
-        Text(text = subtitle, style = MaterialTheme.typography.bodyMedium, color = TextSecondary)
-        Spacer(modifier = Modifier.height(20.dp))
-        Button(onClick = onBack) {
-            Text("رجوع")
         }
     }
 }
