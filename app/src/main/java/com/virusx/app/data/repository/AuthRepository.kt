@@ -241,7 +241,7 @@ class AuthRepository @Inject constructor(
 
         val objectPath = "$userId/avatar_${System.currentTimeMillis()}.jpg"
         val bucket = storage.from("avatars")
-        bucket.upload(path = objectPath, data = compressedBytes, upsert = false)
+        bucket.upload(path = objectPath, data = compressedBytes) { upsert = false }
 
         val resolvedUrl = runCatching {
             bucket.createSignedUrl(path = objectPath, expiresIn = 365.days)

@@ -135,7 +135,7 @@ class StoriesRepository @Inject constructor(
         val bytes = withContext(Dispatchers.IO) { compressStoryImage(imageUri) }
         val objectPath = "$userId/story_${UUID.randomUUID()}.jpg"
         val bucket = storage.from("stories")
-        bucket.upload(path = objectPath, data = bytes, upsert = false)
+        bucket.upload(path = objectPath, data = bytes) { upsert = false }
 
         val mediaUrl = runCatching {
             bucket.createSignedUrl(path = objectPath, expiresIn = 2.days)
