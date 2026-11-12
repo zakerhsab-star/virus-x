@@ -3,6 +3,7 @@ package com.virusx.app.ui.auth
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.virusx.app.data.repository.AuthRepository
+import com.virusx.app.data.repository.SignUpResult
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -69,34 +70,56 @@ class AuthViewModel @Inject constructor(
 
         viewModelScope.launch {
             _uiState.update { it.copy(isLoading = true, errorMessage = null) }
-            val result = if (state.isSignUpMode) {
+            if (state.isSignUpMode) {
                 authRepository.signUp(
                     email = state.email,
                     password = state.password,
                     username = state.username,
                     displayName = state.displayName,
                     phoneNumber = state.phoneNumber
+                ).fold(
+                    onSuccess = { signUpResult ->
+                        if (signUpResult == SignUpResult.AWAITING_EMAIL_CONFIRMATION) {
+                            _uiState.update {
+                                it.copy(
+                                    isLoading = false,
+                                    isSignUpMode = false,
+                                    password = "",
+                                    isSuccess = false,
+                                    errorMessage = "تم إنشاء الحساب! يرجى فتح بريدك الإلكتروني والضغط على رابط التفعيل ثم تسجيل الدخول"
+                                )
+                            }
+                        } else {
+                            _uiState.update { it.copy(isLoading = false, isSuccess = true) }
+                        }
+                    },
+                    onFailure = { error ->
+                        _uiState.update {
+                            it.copy(
+                                isLoading = false,
+                                errorMessage = error.localizedMessage ?: "حدث خطأ أثناء إنشاء الحساب"
+                            )
+                        }
+                    }
                 )
             } else {
                 authRepository.signIn(
                     email = state.email,
                     password = state.password
+                ).fold(
+                    onSuccess = {
+                        _uiState.update { it.copy(isLoading = false, isSuccess = true) }
+                    },
+                    onFailure = { error ->
+                        _uiState.update {
+                            it.copy(
+                                isLoading = false,
+                                errorMessage = error.localizedMessage ?: "بيانات الدخول غير صحيحة أو لم يتم تفعيل الإيميل بعد"
+                            )
+                        }
+                    }
                 )
             }
-
-            result.fold(
-                onSuccess = {
-                    _uiState.update { it.copy(isLoading = false, isSuccess = true) }
-                },
-                onFailure = { error ->
-                    _uiState.update {
-                        it.copy(
-                            isLoading = false,
-                            errorMessage = error.localizedMessage ?: "حدث خطأ أثناء الاتصال بالخادم"
-                        )
-                    }
-                }
-            )
         }
     }
 }

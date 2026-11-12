@@ -21,6 +21,11 @@ import kotlinx.serialization.json.put
 import javax.inject.Inject
 import javax.inject.Singleton
 
+enum class SignUpResult {
+    AUTHENTICATED,
+    AWAITING_EMAIL_CONFIRMATION
+}
+
 @Singleton
 class AuthRepository @Inject constructor(
     private val auth: Auth,
@@ -46,12 +51,27 @@ class AuthRepository @Inject constructor(
                 }
             ).decodeAs<Boolean>()
         } catch (e: Exception) {
-            // Fallback query if RPC fails for any network reason
             val existing = postgrest.from("profiles")
                 .select {
-                    filter {
-                        eq("phone_number", cleanPhone)
-                    }
+                    filter { eq("phone_number", cleanPhone) }
+                }.decodeList<ProfileDto>()
+            existing.isEmpty()
+        }
+    }
+
+    suspend fun isUsernameAvailable(username: String): Boolean {
+        val cleanUsername = username.trim().lowercase()
+        return try {
+            postgrest.rpc(
+                function = "is_username_available",
+                parameters = buildJsonObject {
+                    put("_username", cleanUsername)
+                }
+            ).decodeAs<Boolean>()
+        } catch (e: Exception) {
+            val existing = postgrest.from("profiles")
+                .select {
+                    filter { eq("username", cleanUsername) }
                 }.decodeList<ProfileDto>()
             existing.isEmpty()
         }
@@ -63,29 +83,19 @@ class AuthRepository @Inject constructor(
         username: String,
         displayName: String,
         phoneNumber: String
-    ): Result<Unit> = runCatching {
+    ): Result<SignUpResult> = runCatching {
         val normalizedUsername = username.trim().lowercase()
         val normalizedPhone = phoneNumber.trim()
         val normalizedName = displayName.trim()
 
-        // 1. Check phone number availability via RPC `is_phone_available`
-        val phoneFree = isPhoneAvailable(normalizedPhone)
-        if (!phoneFree) {
+        if (!isPhoneAvailable(normalizedPhone)) {
             throw IllegalStateException("رقم الهاتف مسجل بالفعل لحساب آخر")
         }
 
-        // 2. Check username availability
-        val existingUsername = postgrest.from("profiles")
-            .select {
-                filter {
-                    eq("username", normalizedUsername)
-                }
-            }.decodeList<ProfileDto>()
-        if (existingUsername.isNotEmpty()) {
+        if (!isUsernameAvailable(normalizedUsername)) {
             throw IllegalStateException("اسم المستخدم (@$normalizedUsername) مستخدم بالفعل")
         }
 
-        // 3. Sign up with Supabase Auth passing phone_number in user_metadata (data)
         auth.signUpWith(Email) {
             this.email = email.trim()
             this.password = password
@@ -96,9 +106,10 @@ class AuthRepository @Inject constructor(
             }
         }
 
-        // 4. Sync device info and ensure phone_number is updated on profile
         val userId = getCurrentUserId()
-        if (userId != null) {
+        if (userId == null) {
+            SignUpResult.AWAITING_EMAIL_CONFIRMATION
+        } else {
             val deviceModel = "${Build.MANUFACTURER} ${Build.MODEL}"
             postgrest.from("profiles").update(
                 buildJsonObject {
@@ -110,6 +121,7 @@ class AuthRepository @Inject constructor(
                 filter { eq("id", userId) }
             }
             refreshCurrentUserProfile()
+            SignUpResult.AUTHENTICATED
         }
     }
 
@@ -118,7 +130,8 @@ class AuthRepository @Inject constructor(
             this.email = email.trim()
             this.password = password
         }
-        val userId = getCurrentUserId() ?: throw IllegalStateException("تعذر الحصول على جلسة المستخدم")
+        val userId = getCurrentUserId()
+            ?: throw IllegalStateException("يرجى تفعيل حسابك عبر الرابط المرسل إلى بريدك الإلكتروني أولاً")
         val deviceModel = "${Build.MANUFACTURER} ${Build.MODEL}"
         postgrest.from("profiles").update(
             buildJsonObject {

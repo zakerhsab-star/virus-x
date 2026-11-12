@@ -24,6 +24,7 @@ import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.virusx.app.data.repository.AuthRepository
 import com.virusx.app.ui.auth.AuthScreen
+import com.virusx.app.ui.chat.ChatScreen
 import com.virusx.app.ui.home.HomeScreen
 import com.virusx.app.ui.home.HomeViewModel
 import com.virusx.app.ui.settings.SettingsScreen
@@ -94,10 +95,12 @@ fun VirusXNavHost(
             arguments = listOf(navArgument("chatId") { type = NavType.StringType })
         ) { backStackEntry ->
             val chatId = backStackEntry.arguments?.getString("chatId") ?: ""
-            PlaceholderStageScreen(
-                title = "غرفة المحادثة اللحظية ($chatId)",
-                subtitle = "سيتم استكمال شاشة الشات اللحظي والهمسات والفويس نوت الذكي في Task 4",
-                onBack = { navController.popBackStack() }
+            ChatScreen(
+                chatId = chatId,
+                onBack = {
+                    sharedHomeViewModel.refreshAll()
+                    navController.popBackStack()
+                }
             )
         }
 
