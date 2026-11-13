@@ -60,7 +60,7 @@ class ChatViewModel @Inject constructor(
     val messages: StateFlow<List<MessageEntity>> = _messages.asStateFlow()
 
     val activeSyncSession: StateFlow<ChatSyncSessionDto?> = chatDetailRepository.activeSyncSession
-    val typingUsers = chatDetailRepository.typingUsers
+    val typingUsers: StateFlow<Map<String, String>> = chatDetailRepository.typingUsers
 
     val isRecording: StateFlow<Boolean> = voiceNoteManager.isRecording
     val liveWaveform: StateFlow<List<Float>> = voiceNoteManager.liveWaveform
