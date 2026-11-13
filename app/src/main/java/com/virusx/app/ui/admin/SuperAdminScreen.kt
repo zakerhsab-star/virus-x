@@ -31,7 +31,7 @@ import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VolumeOff
-import androidx.compose.material.icons.filled.WifiTethering
+import androidx.compose.material.icons.filled.Public
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -283,7 +283,7 @@ private fun AdminLiveRadarUsersTab(
                     .padding(12.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Icon(Icons.Default.WifiTethering, contentDescription = null, tint = OnlineGreen)
+                Icon(Icons.Default.Public, contentDescription = null, tint = OnlineGreen)
                 Spacer(modifier = Modifier.width(8.dp))
                 Text(
                     text = "رادار النشاط المباشر: $onlineCount متصل الآن من إجمالى ${users.size} عضو",

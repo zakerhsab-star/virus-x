@@ -85,6 +85,7 @@ class AdminRepository @Inject constructor(
                 put("_reason", reason)
             }
         )
+        Unit
     }
 
     suspend fun muteUserForHours(targetUserId: String, hours: Long): Result<Unit> = runCatching {
@@ -100,6 +101,7 @@ class AdminRepository @Inject constructor(
                 put("_muted_until", mutedUntilIso)
             }
         )
+        Unit
     }
 
     suspend fun sendGlobalBroadcast(title: String, body: String): Result<Unit> = runCatching {
@@ -110,6 +112,7 @@ class AdminRepository @Inject constructor(
                 put("_body", body.trim())
             }
         )
+        Unit
     }
 
     suspend fun updateAppConfig(
@@ -132,9 +135,11 @@ class AdminRepository @Inject constructor(
         ) {
             filter { eq("id", 1) }
         }
+        Unit
     }
 
     suspend fun lockAdminPromotionCode(): Result<Unit> = runCatching {
         postgrest.rpc(function = "lock_admin_promotion")
+        Unit
     }
 }

@@ -127,6 +127,7 @@ class ChatDetailRepository @Inject constructor(
                 put("_new_user_id", newUserId)
             }
         )
+        Unit
     }
 
     suspend fun removeMemberFromGroup(chatId: String, targetUserId: String): Result<Unit> = runCatching {
@@ -137,6 +138,7 @@ class ChatDetailRepository @Inject constructor(
                 put("_target_user_id", targetUserId)
             }
         )
+        Unit
     }
 
     suspend fun fetchInitialMessagesAndSyncSession(chatId: String) {
@@ -387,6 +389,7 @@ class ChatDetailRepository @Inject constructor(
                 put("_emoji", emoji)
             }
         )
+        Unit
     }
 
     suspend fun editMessage(messageId: String, newContent: String): Result<Unit> = runCatching {
@@ -397,6 +400,7 @@ class ChatDetailRepository @Inject constructor(
                 put("_new_content", newContent.trim())
             }
         )
+        Unit
     }
 
     suspend fun expireSelfDestructMessage(messageId: String): Result<Unit> = runCatching {
@@ -406,6 +410,7 @@ class ChatDetailRepository @Inject constructor(
                 put("_message_id", messageId)
             }
         )
+        Unit
     }
 
     suspend fun markVoiceNotePlayed(messageId: String): Result<Unit> = runCatching {
@@ -416,6 +421,7 @@ class ChatDetailRepository @Inject constructor(
         ) {
             filter { eq("id", messageId) }
         }
+        Unit
     }
 
     suspend fun deleteMessageForEveryone(messageId: String): Result<Unit> = runCatching {
@@ -425,6 +431,7 @@ class ChatDetailRepository @Inject constructor(
                 put("_message_id", messageId)
             }
         )
+        Unit
     }
 
     suspend fun startSyncMediaSession(
@@ -463,6 +470,7 @@ class ChatDetailRepository @Inject constructor(
         ) {
             filter { eq("id", sessionId) }
         }
+        Unit
     }
 
     private suspend fun markUnreadMessagesAsRead(chatId: String, messages: List<MessageDto>) {
