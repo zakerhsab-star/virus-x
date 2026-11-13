@@ -15,7 +15,7 @@ import com.virusx.app.data.local.entity.ProfileEntity
         ChatEntity::class,
         MessageEntity::class
     ],
-    version = 3,
+    version = 4,
     exportSchema = false
 )
 abstract class VirusXDatabase : RoomDatabase() {
