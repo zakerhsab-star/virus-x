@@ -124,7 +124,10 @@ import com.virusx.app.ui.theme.VirusXWhisperSurface
 import com.virusx.app.ui.theme.WarningAmber
 import com.virusx.app.ui.theme.WhisperMessageGradient
 import kotlinx.coroutines.delay
-import org.json.JSONObject
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.jsonArray
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 
 @Composable
 fun ChatScreen(
@@ -841,15 +844,13 @@ private fun MessageBubbleItem(
         runCatching {
             val raw = message.reactionsJson
             if (!raw.isNullOrBlank()) {
-                val obj = JSONObject(raw)
-                val keys = obj.keys()
-                while (keys.hasNext()) {
-                    val k = keys.next()
-                    val arr = obj.optJSONArray(k)
-                    if (arr != null && arr.length() > 0) {
+                val obj = Json.parseToJsonElement(raw).jsonObject
+                for ((k, v) in obj) {
+                    val arr = v.jsonArray
+                    if (arr.isNotEmpty()) {
                         emojis.add(k)
-                        counts.add(arr.length())
-                        val hasMe = (0 until arr.length()).any { idx -> arr.getString(idx) == currentUserId }
+                        counts.add(arr.size)
+                        val hasMe = arr.any { elem -> elem.jsonPrimitive.content == currentUserId }
                         mineFlags.add(hasMe)
                     }
                 }
