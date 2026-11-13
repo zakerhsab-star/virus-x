@@ -25,6 +25,17 @@ val supabaseAnonKey: String = localProps.getProperty("SUPABASE_ANON_KEY")
     ?: "sb_publishable_hcIGLW4y2xZ8zt5ERim4Lg_bF3uPBkk"
 
 android {
+    signingConfigs {
+        getByName("debug") {
+            val ks = file("virusx-signing.jks")
+            if (ks.exists()) {
+                storeFile = ks
+                storePassword = "virusx123"
+                keyAlias = "virusx"
+                keyPassword = "virusx123"
+            }
+        }
+    }
     namespace = "com.virusx.app"
     compileSdk = 35
 
@@ -32,8 +43,8 @@ android {
         applicationId = "com.virusx.app"
         minSdk = 26
         targetSdk = 35
-        versionCode = 1
-        versionName = "1.0.0"
+        versionCode = 2
+        versionName = "1.0.1"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
