@@ -101,7 +101,7 @@ class SuperAdminViewModel @Inject constructor(
         viewModelScope.launch {
             adminRepository.muteUserForHours(user.id, hours).fold(
                 onSuccess = {
-                    val msg = if (hours > 0) "تم كتم ${user.displayName} لمدة $hours ساعة" else "تم فك الكتم عن ${user.displayName}"
+                    val msg = if (hours != 0L) "تم كتم ${user.displayName} لمدة $hours ساعة" else "تم فك الكتم عن ${user.displayName}"
                     _uiState.update { it.copy(statusMessage = msg) }
                     refreshDashboard()
                 },

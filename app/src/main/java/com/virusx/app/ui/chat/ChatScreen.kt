@@ -59,7 +59,6 @@ import androidx.compose.material.icons.filled.PersonRemove
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Podcasts
 import androidx.compose.material.icons.filled.Replay10
-import androidx.compose.material.icons.filled.Timer
 import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -125,7 +124,7 @@ import com.virusx.app.ui.theme.VirusXWhisperSurface
 import com.virusx.app.ui.theme.WarningAmber
 import com.virusx.app.ui.theme.WhisperMessageGradient
 import kotlinx.coroutines.delay
-import kotlinx.serialization.json.Json
+import org.json.JSONObject
 
 @Composable
 fun ChatScreen(
@@ -152,7 +151,6 @@ fun ChatScreen(
 
     val listState = rememberLazyListState()
 
-    // Screenshot detector observer while inside ChatScreen
     DisposableEffect(context, chatId) {
         val observer = object : ContentObserver(Handler(Looper.getMainLooper())) {
             override fun onChange(selfChange: Boolean, uri: Uri?) {
@@ -171,7 +169,7 @@ fun ChatScreen(
                                 val addedSec = cursor.getLong(2)
                                 val nowSec = System.currentTimeMillis() / 1000L
                                 if ((name.contains("screenshot") || path.contains("screenshot")) &&
-                                    kotlin.math.abs(nowSec - addedSec) <= 5L
+                                    kotlin.math.abs(nowSec - addedSec) in 0L..5L
                                 ) {
                                     viewModel.reportScreenshotTaken()
                                 }
@@ -356,7 +354,6 @@ fun ChatScreen(
         }
     }
 
-    // Full-Screen Image Preview Dialog
     fullScreenImageUrl?.let { imgUrl ->
         Dialog(
             onDismissRequest = { fullScreenImageUrl = null },
@@ -390,7 +387,6 @@ fun ChatScreen(
         }
     }
 
-    // Group Members & Add Friends Dialog
     if (showGroupMembersDialog && state.isGroup) {
         GroupMembersDialog(
             members = state.members,
@@ -459,7 +455,6 @@ fun ChatScreen(
         )
     }
 
-    // Message Actions + Quick Emoji Reactions Dialog
     selectedMessageForActions?.let { targetMsg ->
         val isMine = targetMsg.senderId == state.currentUserId
         AlertDialog(
@@ -740,7 +735,7 @@ private fun SyncMiniPlayerBar(
 
     LaunchedEffect(session.isPlaying, session.positionSeconds) {
         val targetMs = (session.positionSeconds * 1000).toLong()
-        if (kotlin.math.abs(syncPlayer.currentPosition - targetMs) > 2500L) {
+        if (kotlin.math.abs(syncPlayer.currentPosition - targetMs) !in 0L..2500L) {
             syncPlayer.seekTo(targetMs)
         }
         if (session.isPlaying && !syncPlayer.isPlaying) {
@@ -798,7 +793,6 @@ private fun MessageBubbleItem(
     onSwipeReply: () -> Unit,
     onLongPress: () -> Unit
 ) {
-    // System Screenshot Alert Banner
     val rawContent = message.content.orEmpty()
     if (rawContent.startsWith("[SCREENSHOT_ALERT]")) {
         Box(
@@ -823,15 +817,14 @@ private fun MessageBubbleItem(
         return
     }
 
-    // Live Self-Destruct Countdown
     val destructSec = message.destructSeconds
     var remainingSeconds by remember(message.id, destructSec, message.isDeleted) {
-        mutableIntStateOf(if (!message.isDeleted && destructSec != null && destructSec > 0) destructSec else 0)
+        mutableIntStateOf(if (!message.isDeleted && destructSec != null && destructSec != 0) destructSec else 0)
     }
     LaunchedEffect(message.id, destructSec, message.isDeleted) {
-        if (!message.isDeleted && destructSec != null && destructSec > 0) {
+        if (!message.isDeleted && destructSec != null && destructSec != 0) {
             var left = destructSec
-            while (left > 0) {
+            while (left != 0) {
                 remainingSeconds = left
                 delay(1000L)
                 left--
@@ -841,19 +834,19 @@ private fun MessageBubbleItem(
         }
     }
 
-    val reactionEmojis = remember(message.reactionsJson) {
+    val reactionData = remember(message.reactionsJson) {
         val emojis = ArrayList<String>()
         val counts = ArrayList<Int>()
         val mineFlags = ArrayList<Boolean>()
         runCatching {
             val raw = message.reactionsJson
             if (!raw.isNullOrBlank()) {
-                val obj = org.json.JSONObject(raw)
+                val obj = JSONObject(raw)
                 val keys = obj.keys()
                 while (keys.hasNext()) {
                     val k = keys.next()
                     val arr = obj.optJSONArray(k)
-                    if (arr != null && arr.length() > 0) {
+                    if (arr != null && arr.length() != 0) {
                         emojis.add(k)
                         counts.add(arr.length())
                         val hasMe = (0 until arr.length()).any { idx -> arr.getString(idx) == currentUserId }
@@ -882,7 +875,7 @@ private fun MessageBubbleItem(
             .pointerInput(message.id) {
                 detectHorizontalDragGestures(
                     onDragEnd = {
-                        if (kotlin.math.abs(dragOffset) > 60f) onSwipeReply()
+                        if (kotlin.math.abs(dragOffset) !in 0f..60f) onSwipeReply()
                         dragOffset = 0f
                     },
                     onHorizontalDrag = { _, dragAmount -> dragOffset += dragAmount }
@@ -983,16 +976,17 @@ private fun MessageBubbleItem(
                     )
                 }
                 message.messageType == "image" -> {
-                    if (!message.mediaUrl.isNullOrBlank()) {
+                    val imgUrl = message.mediaUrl
+                    if (!imgUrl.isNullOrBlank()) {
                         AsyncImage(
-                            model = message.mediaUrl,
+                            model = imgUrl,
                             contentDescription = "صورة مرسلة - اضغط للتكبير",
                             contentScale = ContentScale.FillWidth,
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .heightIn(max = 260.dp)
                                 .clip(RoundedCornerShape(12.dp))
-                                .clickable { message.mediaUrl?.let(onOpenFullImage) }
+                                .clickable { onOpenFullImage(imgUrl) }
                         )
                         Text(
                             text = "🔍 اضغط لعرض الصورة كاملة",
@@ -1024,14 +1018,13 @@ private fun MessageBubbleItem(
                 }
             }
 
-            // Bottom metadata row: Self-Destruct countdown + Edited badge + Read status
             if (!message.isDeleted) {
                 Spacer(modifier = Modifier.height(4.dp))
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
-                    if (remainingSeconds > 0) {
+                    if (remainingSeconds != 0) {
                         Text(
                             text = "⏳ ${remainingSeconds}ث",
                             color = WarningAmber,
@@ -1057,8 +1050,7 @@ private fun MessageBubbleItem(
             }
         }
 
-        // Emoji Reaction Chips
-        val (rEmojis, rCounts, rMine) = reactionEmojis
+        val (rEmojis, rCounts, rMine) = reactionData
         if (rEmojis.isNotEmpty() && !message.isDeleted) {
             FlowRow(
                 modifier = Modifier.padding(top = 3.dp, start = 4.dp, end = 4.dp),
@@ -1078,7 +1070,7 @@ private fun MessageBubbleItem(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text(emoji, fontSize = 12.sp)
-                        if (count > 1) {
+                        if (count != 1) {
                             Spacer(modifier = Modifier.width(3.dp))
                             Text("$count", color = TextPrimary, fontSize = 11.sp, fontWeight = FontWeight.Bold)
                         }
@@ -1366,7 +1358,6 @@ private fun ChatComposerSection(
                 }
             }
         } else {
-            // Spacious Main Input Row (Prevents Arabic RTL placeholder clipping)
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
@@ -1413,7 +1404,6 @@ private fun ChatComposerSection(
                 }
             }
 
-            // Compact Tools Bar (Image, Self-Destruct Timer, Whisper, Speech-to-Text)
             LazyRow(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalAlignment = Alignment.CenterVertically

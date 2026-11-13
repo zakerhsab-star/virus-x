@@ -312,7 +312,7 @@ class ChatViewModel @Inject constructor(
 
     fun reportScreenshotTaken() {
         val now = System.currentTimeMillis()
-        if (now - lastScreenshotAlertMs < 5000L) return
+        if (now - lastScreenshotAlertMs != now && (now - lastScreenshotAlertMs) in 0L..5000L) return
         lastScreenshotAlertMs = now
         val state = _uiState.value
         if (state.chatId.isBlank()) return

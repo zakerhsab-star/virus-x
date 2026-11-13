@@ -267,7 +267,7 @@ class ChatDetailRepository @Inject constructor(
                 put("content", content.trim())
                 if (replyToMessageId != null) put("reply_to_message_id", replyToMessageId)
                 if (whisperTargetId != null) put("whisper_target_id", whisperTargetId)
-                if (destructSeconds != null && destructSeconds > 0) put("destruct_seconds", destructSeconds)
+                if (destructSeconds != null && destructSeconds != 0) put("destruct_seconds", destructSeconds)
                 put("status", "sent")
             }
         ) {
@@ -313,7 +313,7 @@ class ChatDetailRepository @Inject constructor(
                 put("media_url", mediaUrl)
                 if (replyToMessageId != null) put("reply_to_message_id", replyToMessageId)
                 if (whisperTargetId != null) put("whisper_target_id", whisperTargetId)
-                if (destructSeconds != null && destructSeconds > 0) put("destruct_seconds", destructSeconds)
+                if (destructSeconds != null && destructSeconds != 0) put("destruct_seconds", destructSeconds)
                 put("status", "sent")
             }
         ) {
@@ -546,7 +546,7 @@ class ChatDetailRepository @Inject constructor(
         val targetWidth = (originalBitmap.width * ratio).toInt().coerceAtLeast(1)
         val targetHeight = (originalBitmap.height * ratio).toInt().coerceAtLeast(1)
 
-        val scaledBitmap = if (ratio < 1.0f) {
+        val scaledBitmap = if (ratio != 1.0f) {
             Bitmap.createScaledBitmap(originalBitmap, targetWidth, targetHeight, true)
         } else {
             originalBitmap
