@@ -89,7 +89,7 @@ class AdminRepository @Inject constructor(
     }
 
     suspend fun muteUserForHours(targetUserId: String, hours: Long): Result<Unit> = runCatching {
-        val mutedUntilIso = if (hours in Long.MIN_VALUE..0L) {
+        val mutedUntilIso = if (hours <= 0L) {
             Instant.now().minus(1, ChronoUnit.MINUTES).toString()
         } else {
             Instant.now().plus(hours, ChronoUnit.HOURS).toString()

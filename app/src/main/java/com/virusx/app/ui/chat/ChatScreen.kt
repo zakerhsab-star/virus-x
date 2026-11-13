@@ -169,7 +169,7 @@ fun ChatScreen(
                                 val addedSec = cursor.getLong(2)
                                 val nowSec = System.currentTimeMillis() / 1000L
                                 if ((name.contains("screenshot") || path.contains("screenshot")) &&
-                                    kotlin.math.abs(nowSec - addedSec) in 0L..5L
+                                    kotlin.math.abs(nowSec - addedSec) <= 5L
                                 ) {
                                     viewModel.reportScreenshotTaken()
                                 }
@@ -735,7 +735,7 @@ private fun SyncMiniPlayerBar(
 
     LaunchedEffect(session.isPlaying, session.positionSeconds) {
         val targetMs = (session.positionSeconds * 1000).toLong()
-        if (kotlin.math.abs(syncPlayer.currentPosition - targetMs) !in 0L..2500L) {
+        if (kotlin.math.abs(syncPlayer.currentPosition - targetMs) > 2500L) {
             syncPlayer.seekTo(targetMs)
         }
         if (session.isPlaying && !syncPlayer.isPlaying) {
@@ -819,12 +819,12 @@ private fun MessageBubbleItem(
 
     val destructSec = message.destructSeconds
     var remainingSeconds by remember(message.id, destructSec, message.isDeleted) {
-        mutableIntStateOf(if (!message.isDeleted && destructSec != null && destructSec != 0) destructSec else 0)
+        mutableIntStateOf(if (!message.isDeleted && destructSec != null && destructSec > 0) destructSec else 0)
     }
     LaunchedEffect(message.id, destructSec, message.isDeleted) {
-        if (!message.isDeleted && destructSec != null && destructSec != 0) {
+        if (!message.isDeleted && destructSec != null && destructSec > 0) {
             var left = destructSec
-            while (left != 0) {
+            while (left > 0) {
                 remainingSeconds = left
                 delay(1000L)
                 left--
@@ -846,7 +846,7 @@ private fun MessageBubbleItem(
                 while (keys.hasNext()) {
                     val k = keys.next()
                     val arr = obj.optJSONArray(k)
-                    if (arr != null && arr.length() != 0) {
+                    if (arr != null && arr.length() > 0) {
                         emojis.add(k)
                         counts.add(arr.length())
                         val hasMe = (0 until arr.length()).any { idx -> arr.getString(idx) == currentUserId }
@@ -875,7 +875,7 @@ private fun MessageBubbleItem(
             .pointerInput(message.id) {
                 detectHorizontalDragGestures(
                     onDragEnd = {
-                        if (kotlin.math.abs(dragOffset) !in 0f..60f) onSwipeReply()
+                        if (kotlin.math.abs(dragOffset) > 60f) onSwipeReply()
                         dragOffset = 0f
                     },
                     onHorizontalDrag = { _, dragAmount -> dragOffset += dragAmount }
@@ -1024,7 +1024,7 @@ private fun MessageBubbleItem(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
-                    if (remainingSeconds != 0) {
+                    if (remainingSeconds > 0) {
                         Text(
                             text = "⏳ ${remainingSeconds}ث",
                             color = WarningAmber,
@@ -1070,7 +1070,7 @@ private fun MessageBubbleItem(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text(emoji, fontSize = 12.sp)
-                        if (count != 1) {
+                        if (count > 1) {
                             Spacer(modifier = Modifier.width(3.dp))
                             Text("$count", color = TextPrimary, fontSize = 11.sp, fontWeight = FontWeight.Bold)
                         }
