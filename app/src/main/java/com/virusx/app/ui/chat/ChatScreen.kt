@@ -891,8 +891,9 @@ private fun MessageBubbleItem(
                 )
                 .combinedClickable(
                     onClick = {
-                        if (message.messageType == "image" && !message.mediaUrl.isNullOrBlank() && !message.isDeleted && canReadWhisper) {
-                            onOpenFullImage(message.mediaUrl)
+                        val urlToOpen = message.mediaUrl
+                        if (message.messageType == "image" && !urlToOpen.isNullOrBlank() && !message.isDeleted && canReadWhisper) {
+                            onOpenFullImage(urlToOpen)
                         }
                     },
                     onLongClick = onLongPress
@@ -975,7 +976,7 @@ private fun MessageBubbleItem(
                                 .fillMaxWidth()
                                 .heightIn(max = 260.dp)
                                 .clip(RoundedCornerShape(12.dp))
-                                .clickable { onOpenFullImage(message.mediaUrl) }
+                                .clickable { message.mediaUrl?.let(onOpenFullImage) }
                         )
                         Text(
                             text = "🔍 اضغط لعرض الصورة كاملة",
