@@ -820,17 +820,17 @@ private fun MessageBubbleItem(
         return
     }
 
-    val destructSec = message.destructSeconds
+    val destructSec: Int = message.destructSeconds ?: 0
     var remainingSeconds by remember(message.id, destructSec, message.isDeleted) {
-        mutableIntStateOf(if (!message.isDeleted && destructSec != null && destructSec > 0) destructSec else 0)
+        mutableIntStateOf(if (!message.isDeleted && destructSec > 0) destructSec else 0)
     }
     LaunchedEffect(message.id, destructSec, message.isDeleted) {
-        if (!message.isDeleted && destructSec != null && destructSec > 0) {
-            var left = destructSec
+        if (!message.isDeleted && destructSec > 0) {
+            var left: Int = destructSec
             while (left > 0) {
                 remainingSeconds = left
                 delay(1000L)
-                left--
+                left -= 1
             }
             remainingSeconds = 0
             onExpireSelfDestruct()
@@ -842,7 +842,7 @@ private fun MessageBubbleItem(
         val counts = ArrayList<Int>()
         val mineFlags = ArrayList<Boolean>()
         runCatching {
-            val raw = message.reactionsJson
+            val raw: String? = message.reactionsJson
             if (!raw.isNullOrBlank()) {
                 val obj = Json.parseToJsonElement(raw).jsonObject
                 for ((k, v) in obj) {
