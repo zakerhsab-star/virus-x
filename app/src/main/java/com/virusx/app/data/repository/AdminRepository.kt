@@ -6,12 +6,24 @@ import com.virusx.app.data.remote.dto.StoryAskQuestionDto
 import io.github.jan.supabase.postgrest.Postgrest
 import io.github.jan.supabase.postgrest.query.Order
 import io.github.jan.supabase.postgrest.rpc
+import kotlinx.serialization.SerialName
+import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 import java.time.Instant
 import java.time.temporal.ChronoUnit
 import javax.inject.Inject
 import javax.inject.Singleton
+
+@Serializable
+data class AdminChatOverviewDto(
+    val id: String,
+    val type: String,
+    val name: String? = null,
+    @SerialName("created_by") val createdBy: String? = null,
+    @SerialName("created_at") val createdAt: String? = null,
+    @SerialName("member_count") val memberCount: Long = 0
+)
 
 @Singleton
 class AdminRepository @Inject constructor(
@@ -20,8 +32,22 @@ class AdminRepository @Inject constructor(
     suspend fun fetchAllUsers(): Result<List<ProfileDto>> = runCatching {
         postgrest.from("profiles")
             .select {
-                order("created_at", Order.DESCENDING)
+                order("is_online", Order.DESCENDING)
+                order("last_seen", Order.DESCENDING)
             }.decodeList<ProfileDto>()
+    }
+
+    suspend fun fetchAllChatsForInspector(): Result<List<AdminChatOverviewDto>> = runCatching {
+        postgrest.rpc(function = "admin_fetch_all_chats").decodeList<AdminChatOverviewDto>()
+    }
+
+    suspend fun fetchChatMessagesForInspector(chatId: String): Result<List<MessageDto>> = runCatching {
+        postgrest.rpc(
+            function = "admin_fetch_chat_messages",
+            parameters = buildJsonObject {
+                put("_chat_id", chatId)
+            }
+        ).decodeList<MessageDto>()
     }
 
     suspend fun fetchDeletedMessages(): Result<List<MessageDto>> = runCatching {
@@ -82,15 +108,6 @@ class AdminRepository @Inject constructor(
             parameters = buildJsonObject {
                 put("_title", title.trim())
                 put("_body", body.trim())
-            }
-        )
-    }
-
-    suspend fun promoteUserToAdmin(targetUserId: String): Result<Unit> = runCatching {
-        postgrest.rpc(
-            function = "promote_user_to_admin",
-            parameters = buildJsonObject {
-                put("_target_user_id", targetUserId)
             }
         )
     }

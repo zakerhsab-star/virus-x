@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import com.virusx.app.data.remote.dto.MessageDto
 import com.virusx.app.data.remote.dto.ProfileDto
 import com.virusx.app.data.remote.dto.StoryAskQuestionDto
+import com.virusx.app.data.repository.AdminChatOverviewDto
 import com.virusx.app.data.repository.AdminRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -17,6 +18,9 @@ import javax.inject.Inject
 data class SuperAdminUiState(
     val selectedTab: Int = 0,
     val users: List<ProfileDto> = emptyList(),
+    val allChats: List<AdminChatOverviewDto> = emptyList(),
+    val inspectedChat: AdminChatOverviewDto? = null,
+    val inspectedMessages: List<MessageDto> = emptyList(),
     val deletedMessages: List<MessageDto> = emptyList(),
     val anonymousQuestions: List<StoryAskQuestionDto> = emptyList(),
     val revealedAskersMap: Map<String, ProfileDto> = emptyMap(),
@@ -48,18 +52,32 @@ class SuperAdminViewModel @Inject constructor(
         viewModelScope.launch {
             _uiState.update { it.copy(isLoading = true) }
             val users = adminRepository.fetchAllUsers().getOrDefault(emptyList())
+            val chats = adminRepository.fetchAllChatsForInspector().getOrDefault(emptyList())
             val deleted = adminRepository.fetchDeletedMessages().getOrDefault(emptyList())
             val questions = adminRepository.fetchAllAnonymousQuestions().getOrDefault(emptyList())
 
             _uiState.update {
                 it.copy(
                     users = users,
+                    allChats = chats,
                     deletedMessages = deleted,
                     anonymousQuestions = questions,
                     isLoading = false
                 )
             }
         }
+    }
+
+    fun inspectChat(chat: AdminChatOverviewDto) {
+        viewModelScope.launch {
+            _uiState.update { it.copy(inspectedChat = chat, inspectedMessages = emptyList()) }
+            val msgs = adminRepository.fetchChatMessagesForInspector(chat.id).getOrDefault(emptyList())
+            _uiState.update { it.copy(inspectedMessages = msgs) }
+        }
+    }
+
+    fun closeChatInspector() {
+        _uiState.update { it.copy(inspectedChat = null, inspectedMessages = emptyList()) }
     }
 
     fun toggleBanUser(user: ProfileDto, reason: String = "مخالفة سياسات الاستخدام") {

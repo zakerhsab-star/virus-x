@@ -11,16 +11,16 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.Switch
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.AdminPanelSettings
@@ -28,9 +28,11 @@ import androidx.compose.material.icons.filled.Block
 import androidx.compose.material.icons.filled.Campaign
 import androidx.compose.material.icons.filled.DeleteSweep
 import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.Radar
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VolumeOff
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -40,8 +42,10 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.ScrollableTabRow
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Tab
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -58,6 +62,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import com.virusx.app.data.remote.dto.MessageDto
 import com.virusx.app.data.remote.dto.ProfileDto
 import com.virusx.app.data.remote.dto.StoryAskQuestionDto
+import com.virusx.app.data.repository.AdminChatOverviewDto
 import com.virusx.app.ui.theme.DangerRed
 import com.virusx.app.ui.theme.OnlineGreen
 import com.virusx.app.ui.theme.TextMuted
@@ -78,6 +83,7 @@ fun SuperAdminScreen(
 ) {
     val state by viewModel.uiState.collectAsState()
     val userMap = remember(state.users) { state.users.associateBy { it.id } }
+    val onlineCount = remember(state.users) { state.users.count { it.isOnline } }
 
     Scaffold(
         containerColor = VirusXBackground
@@ -87,16 +93,16 @@ fun SuperAdminScreen(
                 .fillMaxSize()
                 .padding(paddingValues)
         ) {
-            // Top Bar
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
                     .background(VirusXSurface)
+                    .statusBarsPadding()
                     .padding(horizontal = 12.dp, vertical = 10.dp),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
+                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
                     IconButton(onClick = onBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "رجوع", tint = TextPrimary)
                     }
@@ -104,8 +110,10 @@ fun SuperAdminScreen(
                     Spacer(modifier = Modifier.width(8.dp))
                     Text(
                         text = "لوحة تحكم المطور (Super Admin)",
-                        style = MaterialTheme.typography.titleLarge,
-                        color = TextPrimary
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = TextPrimary,
+                        maxLines = 1
                     )
                 }
 
@@ -128,10 +136,11 @@ fun SuperAdminScreen(
             }
 
             val tabs = listOf(
-                "الأعضاء (${state.users.size})",
+                "رادار المتصلين ($onlineCount/${state.users.size})",
+                "المراقب المباشر (${state.allChats.size})",
                 "الرسائل المحذوفة (${state.deletedMessages.size})",
                 "كشف المجهول (${state.anonymousQuestions.size})",
-                "الإشعارات والأمان"
+                "التحديثات والأمان"
             )
 
             ScrollableTabRow(
@@ -161,22 +170,28 @@ fun SuperAdminScreen(
                 }
             } else {
                 when (state.selectedTab) {
-                    0 -> AdminUsersTab(
+                    0 -> AdminLiveRadarUsersTab(
                         users = state.users,
+                        onlineCount = onlineCount,
                         onToggleBan = { viewModel.toggleBanUser(it) },
                         onMute24h = { viewModel.muteUser(it, 24L) },
                         onUnmute = { viewModel.muteUser(it, 0L) }
                     )
-                    1 -> AdminDeletedMessagesTab(
+                    1 -> AdminLiveChatInspectorTab(
+                        chats = state.allChats,
+                        userMap = userMap,
+                        onInspect = viewModel::inspectChat
+                    )
+                    2 -> AdminDeletedMessagesTab(
                         messages = state.deletedMessages,
                         userMap = userMap
                     )
-                    2 -> AdminRevealQuestionsTab(
+                    3 -> AdminRevealQuestionsTab(
                         questions = state.anonymousQuestions,
                         revealedMap = state.revealedAskersMap,
                         onReveal = viewModel::revealQuestionAsker
                     )
-                    3 -> AdminBroadcastAndSecurityTab(
+                    4 -> AdminBroadcastAndSecurityTab(
                         onSendBroadcast = viewModel::sendBroadcast,
                         onPublishOta = viewModel::publishOtaUpdate,
                         onLockPromotion = viewModel::lockAdminCodePermanently
@@ -185,11 +200,71 @@ fun SuperAdminScreen(
             }
         }
     }
+
+    state.inspectedChat?.let { targetChat ->
+        AlertDialog(
+            onDismissRequest = viewModel::closeChatInspector,
+            containerColor = VirusXSurface,
+            title = {
+                Text(
+                    text = "👁️ مراقبة: ${targetChat.name ?: if (targetChat.type == "group") "مجموعة" else "محادثة خاصة"}",
+                    color = TextPrimary,
+                    fontWeight = FontWeight.Bold
+                )
+            },
+            text = {
+                if (state.inspectedMessages.isEmpty()) {
+                    Text("لا توجد رسائل داخل هذه المحادثة بعد.", color = TextMuted)
+                } else {
+                    LazyColumn(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(max = 400.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        items(state.inspectedMessages, key = { it.id }) { m ->
+                            val sender = userMap[m.senderId]
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(10.dp))
+                                    .background(VirusXSurfaceElevated)
+                                    .padding(10.dp)
+                            ) {
+                                Text(
+                                    text = "${sender?.displayName ?: m.senderId} (@${sender?.username ?: "-"})",
+                                    color = VirusXSecondaryWhisper,
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 12.sp
+                                )
+                                Text(
+                                    text = m.content ?: "[مرفق وسائط]",
+                                    color = if (m.isDeleted) DangerRed else TextPrimary,
+                                    fontSize = 13.sp
+                                )
+                                Text(
+                                    text = m.createdAt ?: "",
+                                    color = TextMuted,
+                                    fontSize = 10.sp
+                                )
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = viewModel::closeChatInspector) {
+                    Text("إغلاق", color = VirusXSecondaryWhisper)
+                }
+            }
+        )
+    }
 }
 
 @Composable
-private fun AdminUsersTab(
+private fun AdminLiveRadarUsersTab(
     users: List<ProfileDto>,
+    onlineCount: Int,
     onToggleBan: (ProfileDto) -> Unit,
     onMute24h: (ProfileDto) -> Unit,
     onUnmute: (ProfileDto) -> Unit
@@ -198,13 +273,38 @@ private fun AdminUsersTab(
         contentPadding = PaddingValues(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
+        item {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(14.dp))
+                    .background(OnlineGreen.copy(alpha = 0.14f))
+                    .border(1.dp, OnlineGreen.copy(alpha = 0.4f), RoundedCornerShape(14.dp))
+                    .padding(12.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(Icons.Default.Radar, contentDescription = null, tint = OnlineGreen)
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    text = "رادار النشاط المباشر: $onlineCount متصل الآن من إجمالى ${users.size} عضو",
+                    color = TextPrimary,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 13.sp
+                )
+            }
+        }
+
         items(users, key = { it.id }) { user ->
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
                     .clip(RoundedCornerShape(16.dp))
                     .background(VirusXSurface)
-                    .border(1.dp, VirusXGlassBorder, RoundedCornerShape(16.dp))
+                    .border(
+                        width = 1.dp,
+                        color = if (user.isOnline) OnlineGreen.copy(alpha = 0.5f) else VirusXGlassBorder,
+                        shape = RoundedCornerShape(16.dp)
+                    )
                     .padding(14.dp),
                 verticalArrangement = Arrangement.spacedBy(6.dp)
             ) {
@@ -220,16 +320,17 @@ private fun AdminUsersTab(
                         fontSize = 16.sp
                     )
                     Text(
-                        text = if (user.isOnline) "🟢 متصل" else "⚪ غير متصل",
+                        text = if (user.isOnline) "🟢 متصل الآن" else "⚪ غير متصل",
                         color = if (user.isOnline) OnlineGreen else TextMuted,
+                        fontWeight = FontWeight.Bold,
                         fontSize = 12.sp
                     )
                 }
 
                 Text("📞 الهاتف: ${user.phoneNumber ?: "غير مسجل"}", color = VirusXSecondaryWhisper, fontSize = 13.sp)
                 Text("📧 البريد: ${user.email ?: "غير متاح"}", color = TextSecondary, fontSize = 12.sp)
-                Text("📱 الجهاز: ${user.deviceType ?: "غير معروف"} | الصلاحية: ${user.role}", color = TextSecondary, fontSize = 12.sp)
-                Text("🕒 آخر ظهور: ${user.lastSeen ?: "-"}", color = TextMuted, fontSize = 11.sp)
+                Text("📱 نوع الجهاز: ${user.deviceType ?: "غير معروف"} | الصلاحية: ${user.role}", color = TextSecondary, fontSize = 12.sp)
+                Text("🕒 آخر نشاط: ${user.lastSeen ?: "الآن"}", color = TextMuted, fontSize = 11.sp)
 
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -237,9 +338,7 @@ private fun AdminUsersTab(
                 ) {
                     Button(
                         onClick = { onToggleBan(user) },
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = if (user.isBanned) OnlineGreen else DangerRed
-                        ),
+                        colors = ButtonDefaults.buttonColors(containerColor = if (user.isBanned) OnlineGreen else DangerRed),
                         modifier = Modifier.weight(1f)
                     ) {
                         Icon(Icons.Default.Block, contentDescription = null, modifier = Modifier.size(16.dp))
@@ -258,6 +357,58 @@ private fun AdminUsersTab(
                         Spacer(modifier = Modifier.width(4.dp))
                         Text(if (user.mutedUntil.isNullOrBlank()) "كتم 24س" else "فك الكتم", fontSize = 12.sp)
                     }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun AdminLiveChatInspectorTab(
+    chats: List<AdminChatOverviewDto>,
+    userMap: Map<String, ProfileDto>,
+    onInspect: (AdminChatOverviewDto) -> Unit
+) {
+    if (chats.isEmpty()) {
+        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            Text("لا توجد محادثات أو مجموعات مسجلة حالياً.", color = TextMuted)
+        }
+    } else {
+        LazyColumn(
+            contentPadding = PaddingValues(16.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            items(chats, key = { it.id }) { chat ->
+                val creator = chat.createdBy?.let { userMap[it] }
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(16.dp))
+                        .background(VirusXSurface)
+                        .border(1.dp, VirusXGlassBorder, RoundedCornerShape(16.dp))
+                        .clickable { onInspect(chat) }
+                        .padding(14.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Text(
+                            text = if (chat.type == "group") "👥 مجموعة: ${chat.name ?: "بدون اسم"}" else "💬 محادثة خاصة",
+                            color = TextPrimary,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 15.sp
+                        )
+                        Text(
+                            text = "المنشئ: ${creator?.displayName ?: "عضو"} | عدد الأعضاء: ${chat.memberCount}",
+                            color = VirusXSecondaryWhisper,
+                            fontSize = 12.sp
+                        )
+                        Text(
+                            text = "تاريخ الإنشاء: ${chat.createdAt ?: "-"}",
+                            color = TextMuted,
+                            fontSize = 11.sp
+                        )
+                    }
+                    Icon(Icons.Default.Visibility, contentDescription = "فحص المحادثة", tint = VirusXSecondaryWhisper)
                 }
             }
         }
@@ -299,14 +450,7 @@ private fun AdminDeletedMessagesTab(
                             fontSize = 14.sp
                         )
                     }
-                    Text(
-                        text = "المحتوى الأصلي قبل الحذف: ${msg.content ?: "[ملف وسائط]"}",
-                        color = VirusXSecondaryWhisper,
-                        fontSize = 14.sp
-                    )
-                    if (!msg.mediaUrl.isNullOrBlank()) {
-                        Text("الرابط: ${msg.mediaUrl}", color = TextSecondary, fontSize = 11.sp)
-                    }
+                    Text("المحتوى: ${msg.content ?: "[ملف وسائط]"}", color = VirusXSecondaryWhisper, fontSize = 14.sp)
                     Text("تاريخ الحذف: ${msg.deletedAt ?: msg.createdAt ?: "-"}", color = TextMuted, fontSize = 11.sp)
                 }
             }
@@ -356,7 +500,7 @@ private fun AdminRevealQuestionsTab(
                         ) {
                             Icon(Icons.Default.Visibility, contentDescription = null, tint = VirusXBackground, modifier = Modifier.size(18.dp))
                             Spacer(modifier = Modifier.width(6.dp))
-                            Text("كشف هوية السائل (reveal_anonymous_asker)", color = VirusXBackground, fontWeight = FontWeight.Bold)
+                            Text("كشف هوية السائل", color = VirusXBackground, fontWeight = FontWeight.Bold)
                         }
                     }
                 }
@@ -373,10 +517,10 @@ private fun AdminBroadcastAndSecurityTab(
 ) {
     var title by remember { mutableStateOf("") }
     var body by remember { mutableStateOf("") }
-    var verCode by remember { mutableStateOf("2") }
-    var verName by remember { mutableStateOf("1.0.1") }
+    var verCode by remember { mutableStateOf("3") }
+    var verName by remember { mutableStateOf("1.0.2") }
     var apkUrl by remember { mutableStateOf("") }
-    var notes by remember { mutableStateOf("تحسينات في الأداء وإصلاح الأخطاء") }
+    var notes by remember { mutableStateOf("تحديث جديد يتضمن إضافات وتحسينات في الأداء") }
     var forceUpdate by remember { mutableStateOf(false) }
     var maintMode by remember { mutableStateOf(false) }
 
@@ -387,7 +531,6 @@ private fun AdminBroadcastAndSecurityTab(
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
-        // In-App OTA Update Publisher Card
         Column(
             modifier = Modifier
                 .fillMaxWidth()
@@ -443,6 +586,7 @@ private fun AdminBroadcastAndSecurityTab(
                 Text("نشر التحديث الآن لكل الأجهزة", color = VirusXBackground, fontWeight = FontWeight.Bold)
             }
         }
+
         Column(
             modifier = Modifier
                 .fillMaxWidth()
@@ -455,9 +599,8 @@ private fun AdminBroadcastAndSecurityTab(
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Icon(Icons.Default.Campaign, contentDescription = null, tint = VirusXSecondaryWhisper)
                 Spacer(modifier = Modifier.width(8.dp))
-                Text("إرسال إشعار عام لكل المستخدمين (send_broadcast)", color = TextPrimary, fontWeight = FontWeight.Bold)
+                Text("إرسال إشعار عام لكل المستخدمين", color = TextPrimary, fontWeight = FontWeight.Bold)
             }
-
             OutlinedTextField(
                 value = title,
                 onValueChange = { title = it },
@@ -465,14 +608,12 @@ private fun AdminBroadcastAndSecurityTab(
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth()
             )
-
             OutlinedTextField(
                 value = body,
                 onValueChange = { body = it },
                 label = { Text("نص الإشعار") },
                 modifier = Modifier.fillMaxWidth()
             )
-
             Button(
                 onClick = {
                     onSendBroadcast(title, body)
@@ -500,17 +641,12 @@ private fun AdminBroadcastAndSecurityTab(
                 Spacer(modifier = Modifier.width(8.dp))
                 Text("قفل كود الترقية السري نهائياً", color = TextPrimary, fontWeight = FontWeight.Bold)
             }
-            Text(
-                text = "يمنع أي شخص آخر من استخدام كود الـ 5 ضغطات لترقية نفسه إلى Super Admin مستقبلاً.",
-                color = TextSecondary,
-                fontSize = 12.sp
-            )
             Button(
                 onClick = onLockPromotion,
                 colors = ButtonDefaults.buttonColors(containerColor = DangerRed),
                 modifier = Modifier.fillMaxWidth()
             ) {
-                Text("تفعيل القفل النهائي (lock_admin_promotion)")
+                Text("تفعيل القفل النهائي")
             }
         }
     }

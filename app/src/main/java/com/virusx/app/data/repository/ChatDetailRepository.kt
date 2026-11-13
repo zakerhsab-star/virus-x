@@ -76,8 +76,8 @@ class ChatDetailRepository @Inject constructor(
     private val _activeSyncSession = MutableStateFlow<ChatSyncSessionDto?>(null)
     val activeSyncSession: StateFlow<ChatSyncSessionDto?> = _activeSyncSession.asStateFlow()
 
-    private val _typingUsers = MutableStateFlow<Map<String, String>>(emptyMap())
-    val typingUsers: StateFlow<Map<String, String>> = _typingUsers.asStateFlow()
+    private val _typingUsers = MutableStateFlow>(emptyMap())
+    val typingUsers: StateFlow> = _typingUsers.asStateFlow()
 
     private var activeRealtimeChannel: RealtimeChannel? = null
     private val autoRepliedSendersInSession = mutableSetOf<String>()
@@ -117,6 +117,26 @@ class ChatDetailRepository @Inject constructor(
         }
 
         return chat to profiles
+    }
+
+    suspend fun addMemberToGroup(chatId: String, newUserId: String): Result<Unit> = runCatching {
+        postgrest.rpc(
+            function = "add_group_member",
+            parameters = buildJsonObject {
+                put("_chat_id", chatId)
+                put("_new_user_id", newUserId)
+            }
+        )
+    }
+
+    suspend fun removeMemberFromGroup(chatId: String, targetUserId: String): Result<Unit> = runCatching {
+        postgrest.rpc(
+            function = "remove_group_member",
+            parameters = buildJsonObject {
+                put("_chat_id", chatId)
+                put("_target_user_id", targetUserId)
+            }
+        )
     }
 
     suspend fun fetchInitialMessagesAndSyncSession(chatId: String) {
@@ -165,7 +185,6 @@ class ChatDetailRepository @Inject constructor(
                         messageDao.upsertMessage(msg.toEntity())
                     }
                 }
-                is PostgresAction.Delete -> {}
                 else -> {}
             }
         }.launchIn(scope)
@@ -236,7 +255,8 @@ class ChatDetailRepository @Inject constructor(
         chatId: String,
         content: String,
         replyToMessageId: String? = null,
-        whisperTargetId: String? = null
+        whisperTargetId: String? = null,
+        destructSeconds: Int? = null
     ): Result<MessageDto> = runCatching {
         val senderId = getCurrentUserId() ?: throw IllegalStateException("غير مسجل الدخول")
         val inserted = postgrest.from("messages").insert(
@@ -247,6 +267,7 @@ class ChatDetailRepository @Inject constructor(
                 put("content", content.trim())
                 if (replyToMessageId != null) put("reply_to_message_id", replyToMessageId)
                 if (whisperTargetId != null) put("whisper_target_id", whisperTargetId)
+                if (destructSeconds != null && destructSeconds > 0) put("destruct_seconds", destructSeconds)
                 put("status", "sent")
             }
         ) {
@@ -262,7 +283,8 @@ class ChatDetailRepository @Inject constructor(
         imageUri: Uri,
         caption: String? = null,
         replyToMessageId: String? = null,
-        whisperTargetId: String? = null
+        whisperTargetId: String? = null,
+        destructSeconds: Int? = null
     ): Result<MessageDto> = runCatching {
         val senderId = getCurrentUserId() ?: throw IllegalStateException("غير مسجل الدخول")
 
@@ -291,6 +313,7 @@ class ChatDetailRepository @Inject constructor(
                 put("media_url", mediaUrl)
                 if (replyToMessageId != null) put("reply_to_message_id", replyToMessageId)
                 if (whisperTargetId != null) put("whisper_target_id", whisperTargetId)
+                if (destructSeconds != null && destructSeconds > 0) put("destruct_seconds", destructSeconds)
                 put("status", "sent")
             }
         ) {
@@ -356,20 +379,39 @@ class ChatDetailRepository @Inject constructor(
         inserted
     }
 
+    suspend fun toggleReaction(messageId: String, emoji: String): Result<Unit> = runCatching {
+        postgrest.rpc(
+            function = "toggle_message_reaction",
+            parameters = buildJsonObject {
+                put("_message_id", messageId)
+                put("_emoji", emoji)
+            }
+        )
+    }
+
+    suspend fun editMessage(messageId: String, newContent: String): Result<Unit> = runCatching {
+        postgrest.rpc(
+            function = "edit_message_content",
+            parameters = buildJsonObject {
+                put("_message_id", messageId)
+                put("_new_content", newContent.trim())
+            }
+        )
+    }
+
+    suspend fun expireSelfDestructMessage(messageId: String): Result<Unit> = runCatching {
+        postgrest.rpc(
+            function = "expire_destruct_message",
+            parameters = buildJsonObject {
+                put("_message_id", messageId)
+            }
+        )
+    }
+
     suspend fun markVoiceNotePlayed(messageId: String): Result<Unit> = runCatching {
         postgrest.from("messages").update(
             buildJsonObject {
                 put("voice_played", true)
-            }
-        ) {
-            filter { eq("id", messageId) }
-        }
-    }
-
-    suspend fun updateVoiceTranscript(messageId: String, transcriptText: String): Result<Unit> = runCatching {
-        postgrest.from("messages").update(
-            buildJsonObject {
-                put("voice_transcript", transcriptText.trim())
             }
         ) {
             filter { eq("id", messageId) }
