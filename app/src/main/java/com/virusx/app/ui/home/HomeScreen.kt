@@ -24,6 +24,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.AutoAwesomeMotion
+import androidx.compose.material.icons.filled.Build
 import androidx.compose.material.icons.filled.Campaign
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.GroupAdd
@@ -32,12 +33,14 @@ import androidx.compose.material.icons.filled.Phone
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.SystemUpdate
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
@@ -54,12 +57,16 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import coil.compose.AsyncImage
 import com.virusx.app.data.local.entity.ChatEntity
 import com.virusx.app.data.remote.dto.ProfileDto
+import com.virusx.app.ui.theme.DangerRed
 import com.virusx.app.ui.theme.OnlineGreen
 import com.virusx.app.ui.theme.SentMessageGradient
 import com.virusx.app.ui.theme.TextMuted
@@ -83,6 +90,7 @@ fun HomeScreen(
 ) {
     val state by viewModel.uiState.collectAsState()
     val visibleChats by viewModel.visibleChats.collectAsState()
+    val otaProgress by viewModel.otaDownloadProgress.collectAsState()
     var showCreateGroupDialog by remember { mutableStateOf(false) }
     var selectedChatForVaultDialog by remember { mutableStateOf<ChatEntity?>(null) }
 
@@ -99,6 +107,37 @@ fun HomeScreen(
             viewModel.consumeNavigateToChat()
             onOpenChat(targetChatId)
         }
+    }
+
+    // Full-screen maintenance overlay if enabled on server
+    state.maintenanceConfig?.let { maint ->
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(VirusXBackground)
+                .padding(24.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(14.dp)
+            ) {
+                Icon(Icons.Default.Build, contentDescription = null, tint = VirusXSecondaryWhisper, modifier = Modifier.size(56.dp))
+                Text("تحديث وصيانة النظام", style = MaterialTheme.typography.headlineMedium, color = TextPrimary)
+                Text(
+                    text = maint.maintenanceMessage.ifBlank { "التطبيق تحت الصيانة حالياً، سنعود قريباً." },
+                    color = TextSecondary,
+                    textAlign = TextAlign.Center
+                )
+                Button(
+                    onClick = viewModel::refreshAll,
+                    colors = ButtonDefaults.buttonColors(containerColor = VirusXPrimary)
+                ) {
+                    Text("إعادة المحاولة")
+                }
+            }
+        }
+        return
     }
 
     val filteredChats = remember(visibleChats, state.searchQuery) {
@@ -139,7 +178,7 @@ fun HomeScreen(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Column {
+                Column(modifier = Modifier.weight(1f)) {
                     Text(
                         text = "VirusX",
                         style = MaterialTheme.typography.headlineMedium,
@@ -150,11 +189,13 @@ fun HomeScreen(
                             "متصل كـ ${it.displayName} (@${it.username})"
                         } ?: "مراسلة فورية مشفرة",
                         style = MaterialTheme.typography.labelMedium,
-                        color = TextSecondary
+                        color = TextSecondary,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
                     )
                 }
 
-                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                     IconButton(onClick = onOpenStories) {
                         Icon(
                             imageVector = Icons.Default.AutoAwesomeMotion,
@@ -179,9 +220,40 @@ fun HomeScreen(
                 }
             }
 
-            Spacer(modifier = Modifier.height(14.dp))
+            if (state.isRefreshing) {
+                Spacer(modifier = Modifier.height(6.dp))
+                LinearProgressIndicator(
+                    color = VirusXSecondaryWhisper,
+                    trackColor = VirusXSurface,
+                    modifier = Modifier.fillMaxWidth().height(2.dp)
+                )
+            }
 
-            // Stealth Search Bar (Searches by Name, Username, Phone OR unlocks Stealth Vault on PIN match)
+            state.errorMessage?.let { err ->
+                Spacer(modifier = Modifier.height(8.dp))
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(DangerRed.copy(alpha = 0.2f))
+                        .padding(horizontal = 12.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = err,
+                        color = TextPrimary,
+                        fontSize = 12.sp,
+                        modifier = Modifier.weight(1f)
+                    )
+                    IconButton(onClick = viewModel::clearError, modifier = Modifier.size(22.dp)) {
+                        Icon(Icons.Default.Close, contentDescription = null, tint = TextPrimary, modifier = Modifier.size(16.dp))
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            // Stealth Search Bar
             OutlinedTextField(
                 value = state.searchQuery,
                 onValueChange = viewModel::onSearchQueryChange,
@@ -264,7 +336,6 @@ fun HomeScreen(
                 contentPadding = PaddingValues(bottom = 88.dp),
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
-                // Directory Search Results (Name / Username / Phone Number)
                 if (state.searchQuery.isNotBlank() && state.searchedUsers.isNotEmpty()) {
                     item {
                         Text(
@@ -302,6 +373,7 @@ fun HomeScreen(
                             Text(
                                 text = "لا توجد محادثات ظاهرة حالياً.\nابحث عن صديق بالاسم أو اليوزرنيم أو رقم الهاتف لبدء الدردشة.",
                                 color = TextMuted,
+                                textAlign = TextAlign.Center,
                                 style = MaterialTheme.typography.bodyMedium
                             )
                         }
@@ -319,7 +391,58 @@ fun HomeScreen(
         }
     }
 
-    // Long-press dialog to move chat into Stealth Vault
+    // In-App OTA Update Dialog
+    state.availableUpdate?.let { update ->
+        AlertDialog(
+            onDismissRequest = { if (!update.forceUpdate) viewModel.dismissUpdateDialog() },
+            containerColor = VirusXSurface,
+            title = {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Default.SystemUpdate, contentDescription = null, tint = VirusXSecondaryWhisper)
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("تحديث جديد متاح (${update.latestVersionName})", color = TextPrimary)
+                }
+            },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text(
+                        text = update.releaseNotes.ifBlank { "يتوفر إصدار جديد من VirusX يتضمن تحسينات وإصلاحات هامة." },
+                        color = TextSecondary,
+                        fontSize = 14.sp
+                    )
+                    if (otaProgress != null) {
+                        LinearProgressIndicator(
+                            progress = { otaProgress ?: 0f },
+                            color = VirusXSecondaryWhisper,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                        Text(
+                            text = "جاري تحميل التحديث (${((otaProgress ?: 0f) * 100).toInt()}%)...",
+                            color = VirusXSecondaryWhisper,
+                            fontSize = 12.sp
+                        )
+                    }
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = viewModel::startOtaUpdate,
+                    enabled = otaProgress == null,
+                    colors = ButtonDefaults.buttonColors(containerColor = VirusXPrimary)
+                ) {
+                    Text("تحديث وتثبيت الآن")
+                }
+            },
+            dismissButton = {
+                if (!update.forceUpdate && otaProgress == null) {
+                    TextButton(onClick = viewModel::dismissUpdateDialog) {
+                        Text("لاحقاً", color = TextSecondary)
+                    }
+                }
+            }
+        )
+    }
+
     selectedChatForVaultDialog?.let { targetChat ->
         AlertDialog(
             onDismissRequest = { selectedChatForVaultDialog = null },
@@ -387,12 +510,21 @@ private fun UserSearchResultCard(
                 .background(SentMessageGradient),
             contentAlignment = Alignment.Center
         ) {
-            Text(
-                text = profile.displayName.take(1).uppercase(),
-                color = TextPrimary,
-                fontWeight = FontWeight.Bold,
-                fontSize = 18.sp
-            )
+            if (!profile.avatarUrl.isNullOrBlank()) {
+                AsyncImage(
+                    model = profile.avatarUrl,
+                    contentDescription = profile.displayName,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.fillMaxSize()
+                )
+            } else {
+                Text(
+                    text = profile.displayName.take(1).uppercase(),
+                    color = TextPrimary,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 18.sp
+                )
+            }
         }
 
         Spacer(modifier = Modifier.width(12.dp))
@@ -464,12 +596,21 @@ fun ChatRowItem(
                     .background(SentMessageGradient),
                 contentAlignment = Alignment.Center
             ) {
-                Text(
-                    text = chat.displayTitle.take(1).uppercase(),
-                    color = TextPrimary,
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 20.sp
-                )
+                if (!chat.avatarUrl.isNullOrBlank()) {
+                    AsyncImage(
+                        model = chat.avatarUrl,
+                        contentDescription = chat.displayTitle,
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier.fillMaxSize()
+                    )
+                } else {
+                    Text(
+                        text = chat.displayTitle.take(1).uppercase(),
+                        color = TextPrimary,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 20.sp
+                    )
+                }
             }
             if (chat.peerOnline) {
                 Box(

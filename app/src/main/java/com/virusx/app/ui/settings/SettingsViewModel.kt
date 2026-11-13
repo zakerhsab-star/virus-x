@@ -85,7 +85,7 @@ class SettingsViewModel @Inject constructor(
                     _uiState.update {
                         it.copy(
                             isLoading = false,
-                            statusMessage = err.localizedMessage ?: "فشل رفع الصورة الشخصية"
+                            statusMessage = cleanError(err, "فشل رفع الصورة الشخصية")
                         )
                     }
                 }
@@ -115,7 +115,7 @@ class SettingsViewModel @Inject constructor(
                     _uiState.update {
                         it.copy(
                             isLoading = false,
-                            statusMessage = err.localizedMessage ?: "فشل تحديث البيانات"
+                            statusMessage = cleanError(err, "فشل تحديث البيانات")
                         )
                     }
                 }
@@ -216,12 +216,17 @@ class SettingsViewModel @Inject constructor(
                     _uiState.update {
                         it.copy(
                             isLoading = false,
-                            statusMessage = err.localizedMessage ?: "تعذر التحقق من كود الإشراف"
+                            statusMessage = cleanError(err, "تعذر التحقق من كود الإشراف")
                         )
                     }
                 }
             )
         }
+    }
+
+    private fun cleanError(err: Throwable, fallback: String): String {
+        val raw = err.localizedMessage ?: return fallback
+        return raw.substringBefore("URL:").substringBefore("Headers:").trim().ifBlank { fallback }
     }
 
     fun signOut(onSignedOut: () -> Unit) {

@@ -2,11 +2,14 @@ package com.virusx.app.ui.home
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.virusx.app.BuildConfig
 import com.virusx.app.data.local.entity.ChatEntity
+import com.virusx.app.data.remote.dto.AppConfigDto
 import com.virusx.app.data.remote.dto.BroadcastDto
 import com.virusx.app.data.remote.dto.ProfileDto
 import com.virusx.app.data.repository.AuthRepository
 import com.virusx.app.data.repository.ChatRepository
+import com.virusx.app.util.OtaUpdateManager
 import com.virusx.app.util.PinHashUtil
 import com.virusx.app.util.VaultPreferencesManager
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -28,6 +31,8 @@ data class HomeUiState(
     val isSearchingUsers: Boolean = false,
     val currentUserProfile: ProfileDto? = null,
     val latestBroadcast: BroadcastDto? = null,
+    val availableUpdate: AppConfigDto? = null,
+    val maintenanceConfig: AppConfigDto? = null,
     val isRefreshing: Boolean = false,
     val openStealthVaultEvent: Boolean = false,
     val navigateToChatId: String? = null,
@@ -38,7 +43,8 @@ data class HomeUiState(
 class HomeViewModel @Inject constructor(
     private val authRepository: AuthRepository,
     private val chatRepository: ChatRepository,
-    private val vaultPrefs: VaultPreferencesManager
+    private val vaultPrefs: VaultPreferencesManager,
+    private val otaUpdateManager: OtaUpdateManager
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(HomeUiState())
@@ -50,6 +56,8 @@ class HomeViewModel @Inject constructor(
     val vaultChats: StateFlow<List<ChatEntity>> = chatRepository.vaultChatsFlow
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
+    val otaDownloadProgress: StateFlow<Float?> = otaUpdateManager.downloadProgress
+
     private var searchJob: Job? = null
 
     init {
@@ -58,16 +66,49 @@ class HomeViewModel @Inject constructor(
 
     fun refreshAll() {
         viewModelScope.launch {
-            _uiState.update { it.copy(isRefreshing = true) }
+            _uiState.update { it.copy(isRefreshing = true, errorMessage = null) }
             val profile = authRepository.refreshCurrentUserProfile()
             chatRepository.syncUserChats()
             val broadcast = chatRepository.fetchLatestBroadcast()
+            val config = chatRepository.fetchAppConfig()
+
+            val updateAvailable = config?.takeIf {
+                it.latestVersionCode > BuildConfig.VERSION_CODE && it.apkDownloadUrl.isNotBlank()
+            }
+            val inMaintenance = config?.takeIf {
+                it.maintenanceMode && profile?.role != "super_admin"
+            }
+
             _uiState.update {
                 it.copy(
                     currentUserProfile = profile,
                     latestBroadcast = broadcast,
+                    availableUpdate = updateAvailable,
+                    maintenanceConfig = inMaintenance,
                     isRefreshing = false
                 )
+            }
+        }
+    }
+
+    fun dismissUpdateDialog() {
+        val current = _uiState.value.availableUpdate ?: return
+        if (!current.forceUpdate) {
+            _uiState.update { it.copy(availableUpdate = null) }
+        }
+    }
+
+    fun clearError() {
+        _uiState.update { it.copy(errorMessage = null) }
+    }
+
+    fun startOtaUpdate() {
+        val url = _uiState.value.availableUpdate?.apkDownloadUrl ?: return
+        viewModelScope.launch {
+            otaUpdateManager.downloadAndInstallApk(url).onFailure { err ->
+                _uiState.update {
+                    it.copy(errorMessage = cleanError(err, "تعذر تحميل التحديث"))
+                }
             }
         }
     }
@@ -76,10 +117,8 @@ class HomeViewModel @Inject constructor(
         _uiState.update { it.copy(searchQuery = newQuery) }
 
         viewModelScope.launch {
-            // 1. Stealth Search Vault Trigger: Check if query matches Vault PIN
             val storedPinHash = vaultPrefs.vaultPinHashFlow.first()
             if (PinHashUtil.verifyPin(newQuery.trim(), storedPinHash)) {
-                // Immediately clear search query so PIN never lingers on screen and unlock Vault
                 _uiState.update {
                     it.copy(
                         searchQuery = "",
@@ -90,7 +129,6 @@ class HomeViewModel @Inject constructor(
                 return@launch
             }
 
-            // 2. Otherwise search users by Display Name, Username, or Phone Number
             searchJob?.cancel()
             if (newQuery.isBlank()) {
                 _uiState.update { it.copy(searchedUsers = emptyList(), isSearchingUsers = false) }
@@ -121,7 +159,7 @@ class HomeViewModel @Inject constructor(
 
     fun startDirectChatWithUser(profile: ProfileDto) {
         viewModelScope.launch {
-            _uiState.update { it.copy(isRefreshing = true) }
+            _uiState.update { it.copy(isRefreshing = true, errorMessage = null) }
             chatRepository.getOrCreateDirectChat(profile).fold(
                 onSuccess = { chatId ->
                     _uiState.update {
@@ -137,7 +175,7 @@ class HomeViewModel @Inject constructor(
                     _uiState.update {
                         it.copy(
                             isRefreshing = false,
-                            errorMessage = err.localizedMessage
+                            errorMessage = cleanError(err, "تعذر بدء المحادثة، تأكد من تشغيل تحديث SQL")
                         )
                     }
                 }
@@ -148,8 +186,8 @@ class HomeViewModel @Inject constructor(
     fun createNewGroupChat(groupName: String, memberIds: List<String>) {
         if (groupName.isBlank()) return
         viewModelScope.launch {
-            _uiState.update { it.copy(isRefreshing = true) }
-            chatRepository.createNewGroupChatCompat(groupName, memberIds).fold(
+            _uiState.update { it.copy(isRefreshing = true, errorMessage = null) }
+            chatRepository.createGroupChat(groupName, memberIds).fold(
                 onSuccess = { chatId ->
                     _uiState.update {
                         it.copy(
@@ -162,7 +200,7 @@ class HomeViewModel @Inject constructor(
                     _uiState.update {
                         it.copy(
                             isRefreshing = false,
-                            errorMessage = err.localizedMessage
+                            errorMessage = cleanError(err, "تعذر إنشاء المجموعة، تأكد من تشغيل تحديث SQL")
                         )
                     }
                 }
@@ -175,9 +213,9 @@ class HomeViewModel @Inject constructor(
             chatRepository.toggleChatHiddenInVault(chatId, hide)
         }
     }
-}
 
-private suspend fun ChatRepository.createNewGroupChatCompat(
-    groupName: String,
-    memberIds: List<String>
-): Result<String> = createGroupChat(groupName, memberIds)
+    private fun cleanError(err: Throwable, fallback: String): String {
+        val raw = err.localizedMessage ?: return fallback
+        return raw.substringBefore("URL:").substringBefore("Headers:").trim().ifBlank { fallback }
+    }
+}

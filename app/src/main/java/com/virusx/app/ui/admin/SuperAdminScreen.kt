@@ -17,6 +17,9 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.Switch
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -175,6 +178,7 @@ fun SuperAdminScreen(
                     )
                     3 -> AdminBroadcastAndSecurityTab(
                         onSendBroadcast = viewModel::sendBroadcast,
+                        onPublishOta = viewModel::publishOtaUpdate,
                         onLockPromotion = viewModel::lockAdminCodePermanently
                     )
                 }
@@ -364,17 +368,81 @@ private fun AdminRevealQuestionsTab(
 @Composable
 private fun AdminBroadcastAndSecurityTab(
     onSendBroadcast: (String, String) -> Unit,
+    onPublishOta: (String, String, String, String, Boolean, Boolean) -> Unit,
     onLockPromotion: () -> Unit
 ) {
     var title by remember { mutableStateOf("") }
     var body by remember { mutableStateOf("") }
+    var verCode by remember { mutableStateOf("2") }
+    var verName by remember { mutableStateOf("1.0.1") }
+    var apkUrl by remember { mutableStateOf("") }
+    var notes by remember { mutableStateOf("تحسينات في الأداء وإصلاح الأخطاء") }
+    var forceUpdate by remember { mutableStateOf(false) }
+    var maintMode by remember { mutableStateOf(false) }
 
     Column(
         modifier = Modifier
             .fillMaxSize()
+            .verticalScroll(rememberScrollState())
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
+        // In-App OTA Update Publisher Card
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(18.dp))
+                .background(VirusXSurface)
+                .border(1.dp, VirusXSecondaryWhisper.copy(alpha = 0.6f), RoundedCornerShape(18.dp))
+                .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Text("🚀 نشر تحديث تلقائي للتطبيق (OTA Update)", color = VirusXSecondaryWhisper, fontWeight = FontWeight.Bold)
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedTextField(
+                    value = verCode,
+                    onValueChange = { verCode = it },
+                    label = { Text("رقم الإصدار (Code)") },
+                    singleLine = true,
+                    modifier = Modifier.weight(1f)
+                )
+                OutlinedTextField(
+                    value = verName,
+                    onValueChange = { verName = it },
+                    label = { Text("اسم الإصدار") },
+                    singleLine = true,
+                    modifier = Modifier.weight(1f)
+                )
+            }
+            OutlinedTextField(
+                value = apkUrl,
+                onValueChange = { apkUrl = it },
+                label = { Text("رابط تحميل ملف APK المباشر") },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth()
+            )
+            OutlinedTextField(
+                value = notes,
+                onValueChange = { notes = it },
+                label = { Text("ملاحظات التحديث") },
+                modifier = Modifier.fillMaxWidth()
+            )
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                Text("تحديث إجباري (Force Update)", color = TextPrimary, fontSize = 13.sp)
+                Switch(checked = forceUpdate, onCheckedChange = { forceUpdate = it })
+            }
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                Text("وضع الصيانة المؤقت (Maintenance)", color = TextPrimary, fontSize = 13.sp)
+                Switch(checked = maintMode, onCheckedChange = { maintMode = it })
+            }
+            Button(
+                onClick = { onPublishOta(verCode, verName, apkUrl, notes, forceUpdate, maintMode) },
+                colors = ButtonDefaults.buttonColors(containerColor = VirusXSecondaryWhisper),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text("نشر التحديث الآن لكل الأجهزة", color = VirusXBackground, fontWeight = FontWeight.Bold)
+            }
+        }
         Column(
             modifier = Modifier
                 .fillMaxWidth()

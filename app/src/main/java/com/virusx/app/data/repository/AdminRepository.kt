@@ -95,6 +95,28 @@ class AdminRepository @Inject constructor(
         )
     }
 
+    suspend fun updateAppConfig(
+        latestVersionCode: Int,
+        latestVersionName: String,
+        apkDownloadUrl: String,
+        releaseNotes: String,
+        forceUpdate: Boolean,
+        maintenanceMode: Boolean
+    ): Result<Unit> = runCatching {
+        postgrest.from("app_config").update(
+            buildJsonObject {
+                put("latest_version_code", latestVersionCode)
+                put("latest_version_name", latestVersionName.trim())
+                put("apk_download_url", apkDownloadUrl.trim())
+                put("release_notes", releaseNotes.trim())
+                put("force_update", forceUpdate)
+                put("maintenance_mode", maintenanceMode)
+            }
+        ) {
+            filter { eq("id", 1) }
+        }
+    }
+
     suspend fun lockAdminPromotionCode(): Result<Unit> = runCatching {
         postgrest.rpc(function = "lock_admin_promotion")
     }

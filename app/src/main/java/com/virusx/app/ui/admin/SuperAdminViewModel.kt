@@ -133,6 +133,34 @@ class SuperAdminViewModel @Inject constructor(
         }
     }
 
+    fun publishOtaUpdate(
+        versionCodeStr: String,
+        versionName: String,
+        apkUrl: String,
+        notes: String,
+        forceUpdate: Boolean,
+        maintenanceMode: Boolean
+    ) {
+        val code = versionCodeStr.trim().toIntOrNull() ?: 1
+        viewModelScope.launch {
+            adminRepository.updateAppConfig(
+                latestVersionCode = code,
+                latestVersionName = versionName,
+                apkDownloadUrl = apkUrl,
+                releaseNotes = notes,
+                forceUpdate = forceUpdate,
+                maintenanceMode = maintenanceMode
+            ).fold(
+                onSuccess = {
+                    _uiState.update { it.copy(statusMessage = "تم نشر إعدادات التحديث السحابي لجميع المستخدمين بنجاح") }
+                },
+                onFailure = { err ->
+                    _uiState.update { it.copy(statusMessage = err.localizedMessage) }
+                }
+            )
+        }
+    }
+
     fun lockAdminCodePermanently() {
         viewModelScope.launch {
             adminRepository.lockAdminPromotionCode().fold(

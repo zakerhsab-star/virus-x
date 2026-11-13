@@ -5,6 +5,7 @@ import com.virusx.app.data.local.dao.ProfileDao
 import com.virusx.app.data.local.entity.ChatEntity
 import com.virusx.app.data.local.entity.toDto
 import com.virusx.app.data.local.entity.toEntity
+import com.virusx.app.data.remote.dto.AppConfigDto
 import com.virusx.app.data.remote.dto.BroadcastDto
 import com.virusx.app.data.remote.dto.ChatDto
 import com.virusx.app.data.remote.dto.ChatInsertDto
@@ -15,7 +16,12 @@ import com.virusx.app.util.VaultPreferencesManager
 import io.github.jan.supabase.auth.Auth
 import io.github.jan.supabase.postgrest.Postgrest
 import io.github.jan.supabase.postgrest.query.Order
+import io.github.jan.supabase.postgrest.rpc
 import kotlinx.coroutines.flow.Flow
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -33,7 +39,6 @@ class ChatRepository @Inject constructor(
     suspend fun syncUserChats(): Result<Unit> = runCatching {
         val currentUserId = auth.currentUserOrNull()?.id ?: return@runCatching
 
-        // 1. Fetch chat memberships for current user
         val myMemberships = postgrest.from("chat_members")
             .select {
                 filter { eq("user_id", currentUserId) }
@@ -42,13 +47,11 @@ class ChatRepository @Inject constructor(
         if (myMemberships.isEmpty()) return@runCatching
         val chatIds = myMemberships.map { it.chatId }
 
-        // 2. Fetch chats
         val chats = postgrest.from("chats")
             .select {
                 filter { isIn("id", chatIds) }
             }.decodeList<ChatDto>()
 
-        // 3. Fetch all members of those chats to resolve peer names for direct chats
         val allMembers = postgrest.from("chat_members")
             .select {
                 filter { isIn("chat_id", chatIds) }
@@ -67,7 +70,6 @@ class ChatRepository @Inject constructor(
         profileDao.upsertProfiles(profiles.map { it.toEntity() })
         val profileMap = profiles.associateBy { it.id }
 
-        // 4. Fetch latest message for each chat
         val entities = chats.map { chat ->
             val membersOfChat = allMembers.filter { it.chatId == chat.id }
             val peerMember = membersOfChat.firstOrNull { it.userId != currentUserId }
@@ -158,41 +160,20 @@ class ChatRepository @Inject constructor(
         val currentUserId = auth.currentUserOrNull()?.id
             ?: throw IllegalStateException("غير مسجل الدخول")
 
-        // Check if direct chat with targetProfile already exists locally
-        val myMemberships = postgrest.from("chat_members")
-            .select {
-                filter { eq("user_id", currentUserId) }
-            }.decodeList<ChatMemberDto>()
-
-        if (myMemberships.isNotEmpty()) {
-            val myChatIds = myMemberships.map { it.chatId }
-            val peerMemberships = postgrest.from("chat_members")
-                .select {
-                    filter {
-                        eq("user_id", targetProfile.id)
-                        isIn("chat_id", myChatIds)
-                    }
-                }.decodeList<ChatMemberDto>()
-
-            if (peerMemberships.isNotEmpty()) {
-                val sharedChatIds = peerMemberships.map { it.chatId }
-                val existingDirect = postgrest.from("chats")
-                    .select {
-                        filter {
-                            eq("type", "direct")
-                            isIn("id", sharedChatIds)
-                        }
-                    }.decodeList<ChatDto>()
-                    .firstOrNull()
-
-                if (existingDirect != null) {
-                    syncUserChats()
-                    return@runCatching existingDirect.id
+        val rpcChatId = runCatching {
+            postgrest.rpc(
+                function = "create_direct_chat",
+                parameters = buildJsonObject {
+                    put("_peer_id", targetProfile.id)
                 }
-            }
+            ).decodeAs<String>()
+        }.getOrNull()
+
+        if (!rpcChatId.isNullOrBlank()) {
+            syncUserChats()
+            return@runCatching rpcChatId
         }
 
-        // Create a new direct chat
         val createdChat = postgrest.from("chats")
             .insert(
                 ChatInsertDto(
@@ -224,6 +205,21 @@ class ChatRepository @Inject constructor(
             throw IllegalArgumentException("الحد الأقصى لأعضاء المجموعة هو 50 عضواً")
         }
 
+        val rpcGroupId = runCatching {
+            postgrest.rpc(
+                function = "create_group_chat",
+                parameters = buildJsonObject {
+                    put("_name", groupName.trim())
+                    put("_member_ids", JsonArray(memberUserIds.map { JsonPrimitive(it) }))
+                }
+            ).decodeAs<String>()
+        }.getOrNull()
+
+        if (!rpcGroupId.isNullOrBlank()) {
+            syncUserChats()
+            return@runCatching rpcGroupId
+        }
+
         val createdChat = postgrest.from("chats")
             .insert(
                 ChatInsertDto(
@@ -235,7 +231,6 @@ class ChatRepository @Inject constructor(
                 select()
             }.decodeSingle<ChatDto>()
 
-        // Insert creator first so RLS `is_chat_member` passes for subsequent members
         postgrest.from("chat_members").insert(
             ChatMemberDto(
                 chatId = createdChat.id,
@@ -270,5 +265,13 @@ class ChatRepository @Inject constructor(
                 order("created_at", Order.DESCENDING)
                 limit(1)
             }.decodeSingleOrNull<BroadcastDto>()
+    }.getOrNull()
+
+    suspend fun fetchAppConfig(): AppConfigDto? = runCatching {
+        postgrest.from("app_config")
+            .select {
+                filter { eq("id", 1) }
+                limit(1)
+            }.decodeSingleOrNull<AppConfigDto>()
     }.getOrNull()
 }
