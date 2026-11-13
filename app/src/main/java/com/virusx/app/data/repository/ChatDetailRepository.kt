@@ -77,7 +77,7 @@ class ChatDetailRepository @Inject constructor(
     val activeSyncSession: StateFlow<ChatSyncSessionDto?> = _activeSyncSession.asStateFlow()
 
     private val _typingUsers = MutableStateFlow>(emptyMap())
-    val typingUsers: StateFlow> = _typingUsers.asStateFlow()
+    val typingUsers = _typingUsers.asStateFlow()
 
     private var activeRealtimeChannel: RealtimeChannel? = null
     private val autoRepliedSendersInSession = mutableSetOf<String>()

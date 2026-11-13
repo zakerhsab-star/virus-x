@@ -841,12 +841,28 @@ private fun MessageBubbleItem(
         }
     }
 
-    val reactionsMap = remember(message.reactionsJson) {
+    val reactionEmojis = remember(message.reactionsJson) {
+        val emojis = ArrayList<String>()
+        val counts = ArrayList<Int>()
+        val mineFlags = ArrayList<Boolean>()
         runCatching {
             val raw = message.reactionsJson
-            if (raw.isNullOrBlank()) emptyMap()
-            else Json.decodeFromString>>(raw)
-        }.getOrDefault(emptyMap())
+            if (!raw.isNullOrBlank()) {
+                val obj = org.json.JSONObject(raw)
+                val keys = obj.keys()
+                while (keys.hasNext()) {
+                    val k = keys.next()
+                    val arr = obj.optJSONArray(k)
+                    if (arr != null && arr.length() > 0) {
+                        emojis.add(k)
+                        counts.add(arr.length())
+                        val hasMe = (0 until arr.length()).any { idx -> arr.getString(idx) == currentUserId }
+                        mineFlags.add(hasMe)
+                    }
+                }
+            }
+        }
+        Triple(emojis, counts, mineFlags)
     }
 
     var dragOffset by remember { mutableFloatStateOf(0f) }
@@ -1042,28 +1058,29 @@ private fun MessageBubbleItem(
         }
 
         // Emoji Reaction Chips
-        if (reactionsMap.isNotEmpty() && !message.isDeleted) {
+        val (rEmojis, rCounts, rMine) = reactionEmojis
+        if (rEmojis.isNotEmpty() && !message.isDeleted) {
             FlowRow(
                 modifier = Modifier.padding(top = 3.dp, start = 4.dp, end = 4.dp),
                 horizontalArrangement = Arrangement.spacedBy(4.dp)
             ) {
-                reactionsMap.forEach { (emoji, users) ->
-                    if (users.isNotEmpty()) {
-                        val reactedByMe = currentUserId != null && users.contains(currentUserId)
-                        Row(
-                            modifier = Modifier
-                                .clip(CircleShape)
-                                .background(if (reactedByMe) VirusXPrimary.copy(alpha = 0.35f) else VirusXSurfaceElevated)
-                                .border(1.dp, if (reactedByMe) VirusXSecondaryWhisper else VirusXGlassBorder, CircleShape)
-                                .clickable { onToggleReaction(emoji) }
-                                .padding(horizontal = 7.dp, vertical = 2.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text(emoji, fontSize = 12.sp)
-                            if (users.size > 1) {
-                                Spacer(modifier = Modifier.width(3.dp))
-                                Text("${users.size}", color = TextPrimary, fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                            }
+                rEmojis.indices.forEach { idx ->
+                    val emoji = rEmojis[idx]
+                    val count = rCounts[idx]
+                    val reactedByMe = rMine[idx]
+                    Row(
+                        modifier = Modifier
+                            .clip(CircleShape)
+                            .background(if (reactedByMe) VirusXPrimary.copy(alpha = 0.35f) else VirusXSurfaceElevated)
+                            .border(1.dp, if (reactedByMe) VirusXSecondaryWhisper else VirusXGlassBorder, CircleShape)
+                            .clickable { onToggleReaction(emoji) }
+                            .padding(horizontal = 7.dp, vertical = 2.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(emoji, fontSize = 12.sp)
+                        if (count > 1) {
+                            Spacer(modifier = Modifier.width(3.dp))
+                            Text("$count", color = TextPrimary, fontSize = 11.sp, fontWeight = FontWeight.Bold)
                         }
                     }
                 }
