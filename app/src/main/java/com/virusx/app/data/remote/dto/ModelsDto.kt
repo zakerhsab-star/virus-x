@@ -59,27 +59,7 @@ data class ChatMemberDto(
     @SerialName("joined_at") val joinedAt: String? = null
 )
 
-@Serializable
-data class MessageDto(
-    @SerialName("id") val id: String,
-    @SerialName("chat_id") val chatId: String,
-    @SerialName("sender_id") val senderId: String,
-    @SerialName("message_type") val messageType: String = "text",
-    @SerialName("content") val content: String? = null,
-    @SerialName("media_url") val mediaUrl: String? = null,
-    @SerialName("reply_to_message_id") val replyToMessageId: String? = null,
-    @SerialName("whisper_target_id") val whisperTargetId: String? = null,
-    @SerialName("voice_view_once") val voiceViewOnce: Boolean = false,
-    @SerialName("voice_played") val voicePlayed: Boolean = false,
-    @SerialName("voice_duration_seconds") val voiceDurationSeconds: Int? = null,
-    @SerialName("voice_waveform") val voiceWaveform: List<Float>? = null,
-    @SerialName("voice_pitch_filter") val voicePitchFilter: String? = null,
-    @SerialName("voice_transcript") val voiceTranscript: String? = null,
-    @SerialName("is_deleted") val isDeleted: Boolean = false,
-    @SerialName("deleted_at") val deletedAt: String? = null,
-    @SerialName("status") val status: String = "sent",
-    @SerialName("created_at") val createdAt: String? = null
-)
+
 
 @Serializable
 data class MessageReadStatusDto(
