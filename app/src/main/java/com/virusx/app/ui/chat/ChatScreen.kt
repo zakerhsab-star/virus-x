@@ -1,12 +1,19 @@
 package com.virusx.app.ui.chat
 
 import android.Manifest
+import android.app.DownloadManager
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.database.ContentObserver
 import android.net.Uri
+import android.os.Environment
 import android.os.Handler
 import android.os.Looper
 import android.provider.MediaStore
+import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -16,24 +23,8 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ExperimentalLayoutApi
-import androidx.compose.foundation.layout.FlowRow
-import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.heightIn
-import androidx.compose.foundation.layout.imePadding
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.statusBarsPadding
-import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
@@ -46,41 +37,9 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Reply
 import androidx.compose.material.icons.automirrored.filled.Send
-import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.Edit
-import androidx.compose.material.icons.filled.Forward10
-import androidx.compose.material.icons.filled.Lock
-import androidx.compose.material.icons.filled.Mic
-import androidx.compose.material.icons.filled.Pause
-import androidx.compose.material.icons.filled.PersonAdd
-import androidx.compose.material.icons.filled.PersonRemove
-import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material.icons.filled.Podcasts
-import androidx.compose.material.icons.filled.Replay10
-import androidx.compose.material.icons.filled.VisibilityOff
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.FilterChip
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.OutlinedTextFieldDefaults
-import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableFloatStateOf
-import androidx.compose.runtime.mutableIntStateOf
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
+import androidx.compose.material.icons.filled.*
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -89,10 +48,13 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
@@ -100,28 +62,15 @@ import androidx.compose.ui.window.DialogProperties
 import androidx.core.content.ContextCompat
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.media3.common.MediaItem
+import androidx.media3.common.PlaybackParameters
 import androidx.media3.exoplayer.ExoPlayer
 import coil.compose.AsyncImage
 import com.virusx.app.data.local.entity.MessageEntity
 import com.virusx.app.data.remote.dto.ChatSyncSessionDto
 import com.virusx.app.data.remote.dto.ProfileDto
-import com.virusx.app.ui.theme.DangerRed
-import com.virusx.app.ui.theme.OnlineGreen
-import com.virusx.app.ui.theme.ReceivedBubbleColor
-import com.virusx.app.ui.theme.SentMessageGradient
-import com.virusx.app.ui.theme.TextMuted
-import com.virusx.app.ui.theme.TextPrimary
-import com.virusx.app.ui.theme.TextSecondary
-import com.virusx.app.ui.theme.VirusXBackground
-import com.virusx.app.ui.theme.VirusXGlassBorder
-import com.virusx.app.ui.theme.VirusXPrimary
-import com.virusx.app.ui.theme.VirusXSecondaryWhisper
-import com.virusx.app.ui.theme.VirusXSurface
-import com.virusx.app.ui.theme.VirusXSurfaceElevated
-import com.virusx.app.ui.theme.VirusXWhisperSurface
-import com.virusx.app.ui.theme.WarningAmber
-import com.virusx.app.ui.theme.WhisperMessageGradient
+import com.virusx.app.ui.theme.*
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
@@ -134,6 +83,7 @@ fun ChatScreen(
     viewModel: ChatViewModel = hiltViewModel()
 ) {
     val context = LocalContext.current
+    val coroutineScope = rememberCoroutineScope()
     val state by viewModel.uiState.collectAsState()
     val messages by viewModel.messages.collectAsState()
     val activeSyncSession by viewModel.activeSyncSession.collectAsState()
@@ -141,7 +91,6 @@ fun ChatScreen(
     val isRecording by viewModel.isRecording.collectAsState()
     val liveWaveform by viewModel.liveWaveform.collectAsState()
     val recordingDuration by viewModel.recordingDurationSeconds.collectAsState()
-    val playingMessageId by viewModel.currentlyPlayingMessageId.collectAsState()
     val isTranscribing by viewModel.isTranscribing.collectAsState()
 
     var showWhisperTargetDialog by remember { mutableStateOf(false) }
@@ -150,6 +99,55 @@ fun ChatScreen(
     var fullScreenImageUrl by remember { mutableStateOf<String?>(null) }
     var selectedMessageForActions by remember { mutableStateOf<MessageEntity?>(null) }
     var isStealthCalculatorActive by remember { mutableStateOf(false) }
+    var showStickerDrawer by remember { mutableStateOf(false) }
+
+    // Local persistent states for Pinned Message, Admin-Only Lock, and Promoted Admins
+    val chatPrefs = remember(chatId) {
+        context.getSharedPreferences("virusx_chat_meta_$chatId", Context.MODE_PRIVATE)
+    }
+    var pinnedMessageId by remember(chatId) {
+        mutableStateOf(chatPrefs.getString("pinned_id", null))
+    }
+    var pinnedMessageText by remember(chatId) {
+        mutableStateOf(chatPrefs.getString("pinned_text", null))
+    }
+    var isAdminOnlyChat by remember(chatId) {
+        mutableStateOf(chatPrefs.getBoolean("admin_only", false))
+    }
+    var promotedAdminIds by remember(chatId) {
+        mutableStateOf(chatPrefs.getStringSet("promoted_admins", emptySet()) ?: emptySet())
+    }
+
+    // Sync system messages for Pin & Admin-Only across all group members
+    LaunchedEffect(messages) {
+        messages.lastOrNull()?.let { latest ->
+            val raw = latest.content.orEmpty()
+            when {
+                raw.startsWith("📌 [رسالة مثبتة]: ") -> {
+                    val body = raw.removePrefix("📌 [رسالة مثبتة]: ").trim()
+                    pinnedMessageId = latest.replyToMessageId ?: latest.id
+                    pinnedMessageText = body
+                    chatPrefs.edit()
+                        .putString("pinned_id", pinnedMessageId)
+                        .putString("pinned_text", pinnedMessageText)
+                        .apply()
+                }
+                raw == "🔒 قام المشرف بقفل الدردشة (الإرسال للمشرفين فقط)" -> {
+                    isAdminOnlyChat = true
+                    chatPrefs.edit().putBoolean("admin_only", true).apply()
+                }
+                raw == "🔓 قام المشرف بفتح الدردشة لجميع الأعضاء" -> {
+                    isAdminOnlyChat = false
+                    chatPrefs.edit().putBoolean("admin_only", false).apply()
+                }
+            }
+        }
+    }
+
+    val isCurrentUserGroupAdmin = remember(state.currentUserId, state.chatCreatorId, promotedAdminIds) {
+        val uid = state.currentUserId
+        uid != null && (uid == state.chatCreatorId || promotedAdminIds.contains(uid))
+    }
 
     val listState = rememberLazyListState()
 
@@ -203,6 +201,16 @@ fun ChatScreen(
         }
     }
 
+    // 100% TOUCH ISOLATION FOR STEALTH CALCULATOR:
+    // When stealth mode is active, ONLY render StealthCalculatorOverlay so zero touches leak to ChatTopBar!
+    if (isStealthCalculatorActive) {
+        StealthCalculatorOverlay(
+            secretCode = "2000",
+            onUnlock = { isStealthCalculatorActive = false }
+        )
+        return
+    }
+
     val audioPermissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestPermission()
     ) { granted ->
@@ -224,108 +232,276 @@ fun ChatScreen(
     val memberMap = remember(state.members) { state.members.associateBy { it.id } }
     val messageMap = remember(messages) { messages.associateBy { it.id } }
 
-    Box(modifier = Modifier.fillMaxSize()) {
-        Scaffold(
-            containerColor = VirusXBackground,
-            topBar = {
+    // Mention autocomplete detection (@username or @الكل)
+    val mentionQuery: String? = remember(state.inputText, state.isGroup) {
+        if (!state.isGroup) null
+        else {
+            val lastWord = state.inputText.substringAfterLast(" ", state.inputText)
+            if (lastWord.startsWith("@") && lastWord.length >= 1) {
+                lastWord.removePrefix("@").lowercase()
+            } else null
+        }
+    }
+
+    Scaffold(
+        containerColor = VirusXBackground,
+        topBar = {
+            Column {
                 ChatTopBar(
                     title = state.chatTitle,
                     isGroup = state.isGroup,
                     memberCount = state.members.size,
                     peerOnline = state.peerOnline,
+                    isRecordingAudio = isRecording,
                     typingUsers = typingUsers.values.toList(),
+                    isAdminOnly = isAdminOnlyChat,
                     onBack = onBack,
-                    onActivateStealth = { isStealthCalculatorActive = true },
+                    onActivateStealth = {
+                        showGroupMembersDialog = false
+                        showStartSyncDialog = false
+                        showWhisperTargetDialog = false
+                        selectedMessageForActions = null
+                        isStealthCalculatorActive = true
+                    },
                     onOpenGroupMembers = { showGroupMembersDialog = true },
                     onOpenSyncDialog = { showStartSyncDialog = true }
                 )
+
+                // Pinned Message Banner (Telegram/WhatsApp style)
+                if (!pinnedMessageText.isNullOrBlank()) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(VirusXSurfaceElevated)
+                            .border(0.5.dp, VirusXSecondaryWhisper.copy(alpha = 0.4f))
+                            .clickable {
+                                val targetIdx = messages.indexOfFirst { it.id == pinnedMessageId }
+                                if (targetIdx >= 0) {
+                                    coroutineScope.launch { listState.animateScrollToItem(targetIdx) }
+                                }
+                            }
+                            .padding(horizontal = 12.dp, vertical = 7.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.PushPin,
+                            contentDescription = "رسالة مثبتة",
+                            tint = WarningAmber,
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text("رسالة مثبتة 📌", color = WarningAmber, fontWeight = FontWeight.Bold, fontSize = 11.sp)
+                            Text(
+                                text = pinnedMessageText.orEmpty(),
+                                color = TextPrimary,
+                                fontSize = 12.sp,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                        if (isCurrentUserGroupAdmin || !state.isGroup) {
+                            IconButton(
+                                onClick = {
+                                    pinnedMessageId = null
+                                    pinnedMessageText = null
+                                    chatPrefs.edit().remove("pinned_id").remove("pinned_text").apply()
+                                },
+                                modifier = Modifier.size(24.dp)
+                            ) {
+                                Icon(Icons.Default.Close, contentDescription = "إلغاء التثبيت", tint = TextSecondary, modifier = Modifier.size(15.dp))
+                            }
+                        }
+                    }
+                }
             }
-        ) { paddingValues ->
-            Column(
+        }
+    ) { paddingValues ->
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(paddingValues)
+                .imePadding()
+        ) {
+            activeSyncSession?.let { session ->
+                SyncMiniPlayerBar(
+                    session = session,
+                    onTogglePlayPause = viewModel::toggleSyncSessionPlayPause,
+                    onSeekBackward = { viewModel.seekSyncSessionBy(-10.0) },
+                    onSeekForward = { viewModel.seekSyncSessionBy(10.0) }
+                )
+            }
+
+            state.statusBanner?.let { banner ->
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(OnlineGreen.copy(alpha = 0.2f))
+                        .padding(horizontal = 14.dp, vertical = 7.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(banner, color = OnlineGreen, fontSize = 12.sp, modifier = Modifier.weight(1f))
+                    IconButton(onClick = viewModel::clearError, modifier = Modifier.size(22.dp)) {
+                        Icon(Icons.Default.Close, contentDescription = null, tint = OnlineGreen, modifier = Modifier.size(15.dp))
+                    }
+                }
+            }
+
+            state.errorMessage?.let { err ->
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(DangerRed.copy(alpha = 0.2f))
+                        .padding(horizontal = 14.dp, vertical = 7.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(err, color = TextPrimary, fontSize = 12.sp, modifier = Modifier.weight(1f))
+                    IconButton(onClick = viewModel::clearError, modifier = Modifier.size(22.dp)) {
+                        Icon(Icons.Default.Close, contentDescription = null, tint = TextPrimary, modifier = Modifier.size(15.dp))
+                    }
+                }
+            }
+
+            LazyColumn(
+                state = listState,
                 modifier = Modifier
-                    .fillMaxSize()
-                    .padding(paddingValues)
-                    .imePadding()
+                    .weight(1f)
+                    .fillMaxWidth()
+                    .padding(horizontal = 10.dp),
+                contentPadding = PaddingValues(vertical = 12.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
-                activeSyncSession?.let { session ->
-                    SyncMiniPlayerBar(
-                        session = session,
-                        onTogglePlayPause = viewModel::toggleSyncSessionPlayPause,
-                        onSeekBackward = { viewModel.seekSyncSessionBy(-10.0) },
-                        onSeekForward = { viewModel.seekSyncSessionBy(10.0) }
+                items(messages, key = { it.id }) { msg ->
+                    val isMine = msg.senderId == state.currentUserId
+                    val senderProfile = memberMap[msg.senderId]
+                    val whisperTargetProfile = msg.whisperTargetId?.let { memberMap[it] }
+                    val repliedMessage = msg.replyToMessageId?.let { messageMap[it] }
+                    val resolvedName = if (isMine) "${state.currentUserName} (أنت)"
+                    else (senderProfile?.displayName ?: if (!state.isGroup) state.chatTitle else "عضو")
+
+                    MessageBubbleItem(
+                        message = msg,
+                        isMine = isMine,
+                        isGroup = state.isGroup,
+                        currentUserId = state.currentUserId,
+                        senderName = resolvedName,
+                        senderAvatarUrl = senderProfile?.avatarUrl,
+                        whisperTargetName = whisperTargetProfile?.displayName,
+                        repliedMessage = repliedMessage,
+                        onOpenFullImage = { url -> fullScreenImageUrl = url },
+                        onExpireSelfDestruct = { viewModel.expireSelfDestructMessage(msg.id) },
+                        onToggleReaction = { emoji -> viewModel.toggleMessageReaction(msg.id, emoji) },
+                        onSwipeReply = { viewModel.setReplyToMessage(msg) },
+                        onLongPress = { selectedMessageForActions = msg }
                     )
                 }
+            }
 
-                state.statusBanner?.let { banner ->
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .background(OnlineGreen.copy(alpha = 0.2f))
-                            .padding(horizontal = 14.dp, vertical = 7.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(banner, color = OnlineGreen, fontSize = 12.sp, modifier = Modifier.weight(1f))
-                        IconButton(onClick = viewModel::clearError, modifier = Modifier.size(22.dp)) {
-                            Icon(Icons.Default.Close, contentDescription = null, tint = OnlineGreen, modifier = Modifier.size(15.dp))
-                        }
-                    }
+            // Mention Autocomplete Popup (@الكل & @username)
+            if (mentionQuery != null) {
+                val filteredMembers = state.members.filter {
+                    it.id != state.currentUserId &&
+                        (it.username.lowercase().contains(mentionQuery) || it.displayName.lowercase().contains(mentionQuery))
                 }
-
-                state.errorMessage?.let { err ->
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .background(DangerRed.copy(alpha = 0.2f))
-                            .padding(horizontal = 14.dp, vertical = 7.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(err, color = TextPrimary, fontSize = 12.sp, modifier = Modifier.weight(1f))
-                        IconButton(onClick = viewModel::clearError, modifier = Modifier.size(22.dp)) {
-                            Icon(Icons.Default.Close, contentDescription = null, tint = TextPrimary, modifier = Modifier.size(15.dp))
-                        }
-                    }
-                }
-
-                LazyColumn(
-                    state = listState,
+                Column(
                     modifier = Modifier
-                        .weight(1f)
                         .fillMaxWidth()
-                        .padding(horizontal = 12.dp),
-                    contentPadding = PaddingValues(vertical = 12.dp),
-                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                        .heightIn(max = 170.dp)
+                        .background(VirusXSurfaceElevated)
+                        .border(0.5.dp, VirusXSecondaryWhisper)
+                        .verticalScroll(rememberScrollState())
+                        .padding(horizontal = 10.dp, vertical = 6.dp),
+                    verticalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
-                    items(messages, key = { it.id }) { msg ->
-                        val isMine = msg.senderId == state.currentUserId
-                        val senderProfile = memberMap[msg.senderId]
-                        val whisperTargetProfile = msg.whisperTargetId?.let { memberMap[it] }
-                        val repliedMessage = msg.replyToMessageId?.let { messageMap[it] }
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(VirusXPrimary.copy(alpha = 0.22f))
+                            .clickable {
+                                val prefix = state.inputText.substringBeforeLast("@")
+                                viewModel.onInputTextChange("$prefix@الكل ")
+                            }
+                            .padding(horizontal = 10.dp, vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text("📢 @الكل", color = WarningAmber, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("إشارة جماعية وتنبيه لكل أعضاء الجروب", color = TextSecondary, fontSize = 11.sp)
+                    }
 
-                        MessageBubbleItem(
-                            message = msg,
-                            isMine = isMine,
-                            isGroup = state.isGroup,
-                            currentUserId = state.currentUserId,
-                            senderName = if (isMine) "${state.currentUserName} (أنت)" else (senderProfile?.displayName ?: if (!state.isGroup) state.chatTitle else "عضو"),
-                            whisperTargetName = whisperTargetProfile?.displayName,
-                            repliedMessage = repliedMessage,
-                            isPlayingVoice = playingMessageId == msg.id,
-                            onPlayVoice = { viewModel.togglePlayVoiceNote(msg) },
-                            onOpenFullImage = { url -> fullScreenImageUrl = url },
-                            onExpireSelfDestruct = { viewModel.expireSelfDestructMessage(msg.id) },
-                            onToggleReaction = { emoji -> viewModel.toggleMessageReaction(msg.id, emoji) },
-                            onSwipeReply = { viewModel.setReplyToMessage(msg) },
-                            onLongPress = { selectedMessageForActions = msg }
-                        )
+                    filteredMembers.forEach { member ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(10.dp))
+                                .clickable {
+                                    val prefix = state.inputText.substringBeforeLast("@")
+                                    viewModel.onInputTextChange("$prefix@${member.username} ")
+                                }
+                                .padding(horizontal = 10.dp, vertical = 7.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            AvatarCircle(
+                                displayName = member.displayName,
+                                avatarUrl = member.avatarUrl,
+                                sizeDp = 26
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(member.displayName, color = TextPrimary, fontWeight = FontWeight.SemiBold, fontSize = 13.sp, modifier = Modifier.weight(1f))
+                            Text("@${member.username}", color = VirusXSecondaryWhisper, fontSize = 12.sp)
+                        }
                     }
                 }
+            }
 
+            // WhatsApp-Compatible Sticker Drawer + Import from Phone/WhatsApp
+            if (showStickerDrawer) {
+                StickerDrawerBar(
+                    context = context,
+                    onSendQuickSticker = { stickerText ->
+                        viewModel.onInputTextChange(stickerText)
+                        viewModel.sendTextMessage()
+                        showStickerDrawer = false
+                    },
+                    onImportStickerFromDevice = {
+                        showStickerDrawer = false
+                        imagePickerLauncher.launch("image/*")
+                    }
+                )
+            }
+
+            if (isAdminOnlyChat && state.isGroup && !isCurrentUserGroupAdmin) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(VirusXSurface)
+                        .border(0.5.dp, VirusXGlassBorder)
+                        .padding(vertical = 14.dp, horizontal = 16.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = "🔒 هذه المجموعة مقفلة حالياً — الإرسال متاح للمشرفين فقط",
+                        color = WarningAmber,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 13.sp,
+                        textAlign = TextAlign.Center
+                    )
+                }
+            } else {
                 ChatComposerSection(
                     state = state,
                     isRecording = isRecording,
                     liveWaveform = liveWaveform,
                     recordingDuration = recordingDuration,
                     isTranscribing = isTranscribing,
+                    showStickerDrawer = showStickerDrawer,
+                    onToggleStickerDrawer = { showStickerDrawer = !showStickerDrawer },
+                    onInsertMentionPrefix = {
+                        val current = state.inputText
+                        val next = if (current.isEmpty() || current.endsWith(" ")) "${current}@" else "$current @"
+                        viewModel.onInputTextChange(next)
+                    },
                     onInputChange = viewModel::onInputTextChange,
                     onSendText = viewModel::sendTextMessage,
                     onPickImage = { imagePickerLauncher.launch("image/*") },
@@ -357,15 +533,9 @@ fun ChatScreen(
                 )
             }
         }
-
-        if (isStealthCalculatorActive) {
-            StealthCalculatorOverlay(
-                secretCode = "2000",
-                onUnlock = { isStealthCalculatorActive = false }
-            )
-        }
     }
 
+    // Full-Screen Image Viewer + Save to Gallery Button
     fullScreenImageUrl?.let { imgUrl ->
         Dialog(
             onDismissRequest = { fullScreenImageUrl = null },
@@ -374,26 +544,44 @@ fun ChatScreen(
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .background(Color.Black.copy(alpha = 0.95f))
-                    .clickable { fullScreenImageUrl = null },
+                    .background(Color.Black.copy(alpha = 0.96f)),
                 contentAlignment = Alignment.Center
             ) {
                 AsyncImage(
                     model = imgUrl,
                     contentDescription = "عرض الصورة كاملة",
                     contentScale = ContentScale.Fit,
-                    modifier = Modifier.fillMaxSize().padding(12.dp)
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(12.dp)
                 )
-                IconButton(
-                    onClick = { fullScreenImageUrl = null },
+
+                Row(
                     modifier = Modifier
                         .align(Alignment.TopEnd)
                         .statusBarsPadding()
-                        .padding(16.dp)
-                        .clip(CircleShape)
-                        .background(VirusXSurface)
+                        .padding(16.dp),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
-                    Icon(Icons.Default.Close, contentDescription = "إغلاق", tint = TextPrimary)
+                    IconButton(
+                        onClick = {
+                            saveImageUrlToGallery(context, imgUrl)
+                        },
+                        modifier = Modifier
+                            .clip(CircleShape)
+                            .background(OnlineGreen.copy(alpha = 0.85f))
+                    ) {
+                        Icon(Icons.Default.Download, contentDescription = "حفظ الصورة في المعرض", tint = Color.Black)
+                    }
+
+                    IconButton(
+                        onClick = { fullScreenImageUrl = null },
+                        modifier = Modifier
+                            .clip(CircleShape)
+                            .background(VirusXSurface)
+                    ) {
+                        Icon(Icons.Default.Close, contentDescription = "إغلاق", tint = TextPrimary)
+                    }
                 }
             }
         }
@@ -404,11 +592,33 @@ fun ChatScreen(
             members = state.members,
             currentUserId = state.currentUserId,
             creatorId = state.chatCreatorId,
+            promotedAdminIds = promotedAdminIds,
+            isAdminOnly = isAdminOnlyChat,
             searchQuery = state.memberSearchQuery,
             searchResults = state.memberSearchResults,
             onSearchChange = viewModel::onMemberSearchChange,
             onAddMember = viewModel::addMemberToGroup,
             onRemoveMember = viewModel::removeMemberFromGroup,
+            onTogglePromoteAdmin = { targetMember ->
+                val updated = promotedAdminIds.toMutableSet()
+                if (updated.contains(targetMember.id)) {
+                    updated.remove(targetMember.id)
+                    Toast.makeText(context, "تم إلغاء إشراف ${targetMember.displayName}", Toast.LENGTH_SHORT).show()
+                } else {
+                    updated.add(targetMember.id)
+                    Toast.makeText(context, "تم ترقية ${targetMember.displayName} لمشرف في الجروب ⭐", Toast.LENGTH_SHORT).show()
+                }
+                promotedAdminIds = updated
+                chatPrefs.edit().putStringSet("promoted_admins", updated).apply()
+            },
+            onToggleAdminOnlyMode = { enabled ->
+                isAdminOnlyChat = enabled
+                chatPrefs.edit().putBoolean("admin_only", enabled).apply()
+                val notice = if (enabled) "🔒 قام المشرف بقفل الدردشة (الإرسال للمشرفين فقط)"
+                else "🔓 قام المشرف بفتح الدردشة لجميع الأعضاء"
+                viewModel.onInputTextChange(notice)
+                viewModel.sendTextMessage()
+            },
             onDismiss = { showGroupMembersDialog = false }
         )
     }
@@ -442,6 +652,8 @@ fun ChatScreen(
                                     .padding(12.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
+                                AvatarCircle(displayName = member.displayName, avatarUrl = member.avatarUrl, sizeDp = 30)
+                                Spacer(modifier = Modifier.width(8.dp))
                                 Text(member.displayName, color = TextPrimary, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
                                 Text("@${member.username}", color = VirusXSecondaryWhisper, fontSize = 12.sp)
                             }
@@ -467,14 +679,34 @@ fun ChatScreen(
         )
     }
 
+    // Long-Press Message Action Sheet (Reactions + Seen By + Copy + Forward + Pin + Edit + Admin Delete)
     selectedMessageForActions?.let { targetMsg ->
         val isMine = targetMsg.senderId == state.currentUserId
+        val canDeleteForEveryone = isMine || isCurrentUserGroupAdmin
+
+        // Compute Seen By list in groups (members who sent messages/reactions after or read status)
+        val seenByMembers = remember(targetMsg, state.members, messages) {
+            if (!state.isGroup) emptyList()
+            else {
+                val targetIdx = messages.indexOfFirst { it.id == targetMsg.id }
+                val activeAfterIds = if (targetIdx >= 0) {
+                    messages.drop(targetIdx + 1).map { it.senderId }.toSet()
+                } else emptySet()
+                state.members.filter { m ->
+                    m.id != targetMsg.senderId && (targetMsg.status == "read" || activeAfterIds.contains(m.id))
+                }
+            }
+        }
+
         AlertDialog(
             onDismissRequest = { selectedMessageForActions = null },
             containerColor = VirusXSurface,
-            title = { Text("خيارات وتفاعل سريع", color = TextPrimary) },
+            title = { Text("خيارات الرسالة والتفاعل", color = TextPrimary, fontWeight = FontWeight.Bold) },
             text = {
-                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Column(
+                    modifier = Modifier.verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
                     if (!targetMsg.isDeleted) {
                         Row(
                             modifier = Modifier
@@ -499,6 +731,39 @@ fun ChatScreen(
                         }
                     }
 
+                    // Seen By section in Groups
+                    if (state.isGroup) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(12.dp))
+                                .background(VirusXSurfaceElevated)
+                                .padding(10.dp),
+                            verticalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            Text(
+                                text = "👁️ تمت المشاهدة بواسطة (${seenByMembers.size}):",
+                                color = VirusXSecondaryWhisper,
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 12.sp
+                            )
+                            if (seenByMembers.isEmpty()) {
+                                Text("لم تتم المشاهدة من الأعضاء بعد", color = TextMuted, fontSize = 11.sp)
+                            } else {
+                                seenByMembers.forEach { reader ->
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                    ) {
+                                        AvatarCircle(displayName = reader.displayName, avatarUrl = reader.avatarUrl, sizeDp = 22)
+                                        Text(reader.displayName, color = TextPrimary, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                                        Text("• ✓✓ قرأها", color = OnlineGreen, fontSize = 10.sp)
+                                    }
+                                }
+                            }
+                        }
+                    }
+
                     TextButton(
                         onClick = {
                             viewModel.setReplyToMessage(targetMsg)
@@ -508,7 +773,63 @@ fun ChatScreen(
                     ) {
                         Icon(Icons.AutoMirrored.Filled.Reply, contentDescription = null, tint = VirusXSecondaryWhisper)
                         Spacer(modifier = Modifier.width(8.dp))
-                        Text("رد مقتبس على الرسالة", color = TextPrimary)
+                        Text("رد مقتبس على الرسالة", color = TextPrimary, modifier = Modifier.weight(1f))
+                    }
+
+                    if (!targetMsg.content.isNullOrBlank() && !targetMsg.isDeleted) {
+                        TextButton(
+                            onClick = {
+                                val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                                clipboard.setPrimaryClip(ClipData.newPlainText("VirusX Message", targetMsg.content))
+                                Toast.makeText(context, "تم نسخ النص إلى الحافظة 📋", Toast.LENGTH_SHORT).show()
+                                selectedMessageForActions = null
+                            },
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Icon(Icons.Default.ContentCopy, contentDescription = null, tint = VirusXSecondaryWhisper)
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text("نسخ نص الرسالة", color = TextPrimary, modifier = Modifier.weight(1f))
+                        }
+                    }
+
+                    if (!targetMsg.isDeleted) {
+                        TextButton(
+                            onClick = {
+                                val forwardText = "↪️ [رسالة محوّلة]: ${targetMsg.content ?: targetMsg.mediaUrl.orEmpty()}"
+                                val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                                clipboard.setPrimaryClip(ClipData.newPlainText("Forwarded", forwardText))
+                                viewModel.onInputTextChange(forwardText)
+                                Toast.makeText(context, "تم تجهيز الرسالة لإعادة التوجيه (ومنسوخة لأي محادثة أخرى)", Toast.LENGTH_SHORT).show()
+                                selectedMessageForActions = null
+                            },
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Icon(Icons.Default.Share, contentDescription = null, tint = OnlineGreen)
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text("إعادة توجيه الرسالة (Forward)", color = TextPrimary, modifier = Modifier.weight(1f))
+                        }
+                    }
+
+                    if (!targetMsg.isDeleted && (isCurrentUserGroupAdmin || !state.isGroup)) {
+                        TextButton(
+                            onClick = {
+                                val preview = targetMsg.content ?: "📷 مرفق مثبت"
+                                pinnedMessageId = targetMsg.id
+                                pinnedMessageText = preview
+                                chatPrefs.edit()
+                                    .putString("pinned_id", targetMsg.id)
+                                    .putString("pinned_text", preview)
+                                    .apply()
+                                viewModel.onInputTextChange("📌 [رسالة مثبتة]: $preview")
+                                viewModel.sendTextMessage()
+                                selectedMessageForActions = null
+                            },
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Icon(Icons.Default.PushPin, contentDescription = null, tint = WarningAmber)
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text("تثبيت الرسالة في أعلى المحادثة 📌", color = WarningAmber, modifier = Modifier.weight(1f))
+                        }
                     }
 
                     if (isMine && !targetMsg.isDeleted && targetMsg.messageType == "text") {
@@ -521,11 +842,11 @@ fun ChatScreen(
                         ) {
                             Icon(Icons.Default.Edit, contentDescription = null, tint = VirusXSecondaryWhisper)
                             Spacer(modifier = Modifier.width(8.dp))
-                            Text("تعديل نص الرسالة", color = TextPrimary)
+                            Text("تعديل نص الرسالة", color = TextPrimary, modifier = Modifier.weight(1f))
                         }
                     }
 
-                    if (isMine && !targetMsg.isDeleted) {
+                    if (canDeleteForEveryone && !targetMsg.isDeleted) {
                         TextButton(
                             onClick = {
                                 viewModel.deleteMessageForEveryone(targetMsg.id)
@@ -535,7 +856,11 @@ fun ChatScreen(
                         ) {
                             Icon(Icons.Default.Delete, contentDescription = null, tint = DangerRed)
                             Spacer(modifier = Modifier.width(8.dp))
-                            Text("حذف الرسالة لدى الجميع", color = DangerRed)
+                            Text(
+                                text = if (isMine) "حذف الرسالة لدى الجميع" else "حذف الرسالة كمشرف (Admin Delete)",
+                                color = DangerRed,
+                                modifier = Modifier.weight(1f)
+                            )
                         }
                     }
                 }
@@ -549,14 +874,144 @@ fun ChatScreen(
     }
 }
 
+private fun saveImageUrlToGallery(context: Context, imageUrl: String) {
+    runCatching {
+        val request = DownloadManager.Request(Uri.parse(imageUrl))
+            .setTitle("VirusX Image")
+            .setDescription("جاري حفظ الصورة في المعرض...")
+            .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
+            .setDestinationInExternalPublicDir(
+                Environment.DIRECTORY_PICTURES,
+                "VirusX/VirusX_${System.currentTimeMillis()}.jpg"
+            )
+            .setAllowedOverMetered(true)
+            .setAllowedOverRoaming(true)
+        val dm = context.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
+        dm.enqueue(request)
+        Toast.makeText(context, "جاري حفظ الصورة في المعرض (Pictures/VirusX) 📥", Toast.LENGTH_SHORT).show()
+    }.onFailure {
+        Toast.makeText(context, "تعذر حفظ الصورة: ${it.localizedMessage}", Toast.LENGTH_SHORT).show()
+    }
+}
+
+@Composable
+private fun AvatarCircle(
+    displayName: String,
+    avatarUrl: String?,
+    sizeDp: Int = 34
+) {
+    val initials = remember(displayName) {
+        val clean = displayName.replace("(أنت)", "").trim()
+        val parts = clean.split(" ").filter { it.isNotBlank() }
+        when {
+            parts.size >= 2 -> "${parts[0].first()}${parts[1].first()}".uppercase()
+            clean.length >= 2 -> clean.take(2).uppercase()
+            clean.isNotEmpty() -> clean.take(1).uppercase()
+            else -> "VX"
+        }
+    }
+
+    Box(
+        modifier = Modifier
+            .size(sizeDp.dp)
+            .clip(CircleShape)
+            .background(Brush.linearGradient(listOf(VirusXPrimary, VirusXSecondaryWhisper)))
+            .border(1.dp, VirusXGlassBorder, CircleShape),
+        contentAlignment = Alignment.Center
+    ) {
+        if (!avatarUrl.isNullOrBlank()) {
+            AsyncImage(
+                model = avatarUrl,
+                contentDescription = displayName,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxSize()
+            )
+        } else {
+            Text(
+                text = initials,
+                color = Color.White,
+                fontWeight = FontWeight.Bold,
+                fontSize = (sizeDp * 0.36f).sp
+            )
+        }
+    }
+}
+
+@Composable
+private fun StickerDrawerBar(
+    context: Context,
+    onSendQuickSticker: (String) -> Unit,
+    onImportStickerFromDevice: () -> Unit
+) {
+    val stickerPacks = remember {
+        listOf(
+            "🔥😎", "😂💀", "🫡⚡", "❤️✨", "👑🦁",
+            "🎯🚀", "🤫🔒", "🎉🥳", "👀🍿", "🤝💯"
+        )
+    }
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(VirusXSurfaceElevated)
+            .border(0.5.dp, VirusXSecondaryWhisper.copy(alpha = 0.5f))
+            .padding(horizontal = 12.dp, vertical = 10.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = "🎭 الملصقات السريعة وملصقات واتساب",
+                color = TextPrimary,
+                fontWeight = FontWeight.Bold,
+                fontSize = 12.sp
+            )
+            Text(
+                text = "📥 استيراد ملصق من واتساب/المعرض",
+                color = OnlineGreen,
+                fontWeight = FontWeight.Bold,
+                fontSize = 11.sp,
+                modifier = Modifier
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(OnlineGreen.copy(alpha = 0.15f))
+                    .clickable { onImportStickerFromDevice() }
+                    .padding(horizontal = 8.dp, vertical = 4.dp)
+            )
+        }
+
+        LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            items(stickerPacks) { st ->
+                Box(
+                    modifier = Modifier
+                        .size(56.dp)
+                        .clip(RoundedCornerShape(14.dp))
+                        .background(VirusXSurface)
+                        .border(1.dp, VirusXGlassBorder, RoundedCornerShape(14.dp))
+                        .clickable { onSendQuickSticker("[STICKER] $st") },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(text = st, fontSize = 24.sp)
+                }
+            }
+        }
+        Text(
+            text = "💡 نصيحة: يمكنك أيضاً إرسال أي ملصق محفوظ في كيبورد هاتفك (Gboard) مباشرة من زر الإيموجي في الكيبورد!",
+            color = TextSecondary,
+            fontSize = 10.sp
+        )
+    }
+}
+
 @Composable
 private fun StealthCalculatorOverlay(
     secretCode: String = "2000",
     onUnlock: () -> Unit
 ) {
-    // Prevent accidental back button exit while in stealth mode
     BackHandler(enabled = true) {
-        // Stay in calculator unless secret code 2000= is entered
+        // Stay locked inside calculator until 2000= is typed
     }
 
     var display by remember { mutableStateOf("0") }
@@ -647,7 +1102,6 @@ private fun StealthCalculatorOverlay(
                 }
             }
             else -> {
-                // Digit 0-9
                 if (display == "0" || resetDisplayOnNextDigit) {
                     display = btn
                     resetDisplayOnNextDigit = false
@@ -670,8 +1124,13 @@ private fun StealthCalculatorOverlay(
         modifier = Modifier
             .fillMaxSize()
             .background(Color(0xFF0A0D12))
+            .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null
+            ) { /* Consume all stray taps on empty areas */ }
             .statusBarsPadding()
-            .padding(16.dp),
+            .navigationBarsPadding()
+            .padding(horizontal = 16.dp, vertical = 14.dp),
         verticalArrangement = Arrangement.SpaceBetween
     ) {
         Row(
@@ -699,7 +1158,7 @@ private fun StealthCalculatorOverlay(
             modifier = Modifier
                 .fillMaxWidth()
                 .weight(1f)
-                .padding(horizontal = 12.dp, vertical = 20.dp),
+                .padding(horizontal = 12.dp, vertical = 16.dp),
             verticalArrangement = Arrangement.Bottom,
             horizontalAlignment = Alignment.End
         ) {
@@ -712,12 +1171,12 @@ private fun StealthCalculatorOverlay(
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
-                Spacer(modifier = Modifier.height(8.dp))
+                Spacer(modifier = Modifier.height(6.dp))
             }
             Text(
                 text = display,
                 color = Color.White,
-                fontSize = 56.sp,
+                fontSize = 52.sp,
                 fontWeight = FontWeight.Light,
                 textAlign = TextAlign.End,
                 maxLines = 1,
@@ -726,13 +1185,15 @@ private fun StealthCalculatorOverlay(
         }
 
         Column(
-            modifier = Modifier.fillMaxWidth(),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(bottom = 8.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
             buttonRows.forEach { row ->
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
                     row.forEach { label ->
                         val isOperator = label in listOf("÷", "×", "-", "+", "=")
@@ -753,8 +1214,8 @@ private fun StealthCalculatorOverlay(
                         Box(
                             modifier = Modifier
                                 .weight(1f)
-                                .height(68.dp)
-                                .clip(RoundedCornerShape(22.dp))
+                                .height(62.dp)
+                                .clip(RoundedCornerShape(20.dp))
                                 .background(bgColor)
                                 .clickable { handleInput(label) },
                             contentAlignment = Alignment.Center
@@ -762,7 +1223,7 @@ private fun StealthCalculatorOverlay(
                             Text(
                                 text = label,
                                 color = txtColor,
-                                fontSize = 26.sp,
+                                fontSize = 24.sp,
                                 fontWeight = FontWeight.SemiBold
                             )
                         }
@@ -779,7 +1240,9 @@ private fun ChatTopBar(
     isGroup: Boolean,
     memberCount: Int,
     peerOnline: Boolean,
+    isRecordingAudio: Boolean,
     typingUsers: List<String>,
+    isAdminOnly: Boolean,
     onBack: () -> Unit,
     onActivateStealth: () -> Unit,
     onOpenGroupMembers: () -> Unit,
@@ -807,17 +1270,24 @@ private fun ChatTopBar(
                 .weight(1f)
                 .clickable(enabled = isGroup, onClick = onOpenGroupMembers)
         ) {
-            Text(
-                text = title,
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold,
-                color = TextPrimary,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    text = title,
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = TextPrimary,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                if (isAdminOnly && isGroup) {
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text("🔒", fontSize = 12.sp)
+                }
+            }
             val subtitle = when {
+                isRecordingAudio -> "🎤 جاري تسجيل مقطع صوتي..."
                 typingUsers.isNotEmpty() -> "✍️ ${typingUsers.joinToString(", ")} يكتب الآن..."
-                isGroup -> "$memberCount أعضاء • اضغط لإضافة أصدقاء"
+                isGroup -> "$memberCount أعضاء • اضغط للإدارة وإضافة أصدقاء"
                 peerOnline -> "متصل الآن"
                 else -> "غير متصل"
             }
@@ -825,6 +1295,7 @@ private fun ChatTopBar(
                 text = subtitle,
                 style = MaterialTheme.typography.labelSmall,
                 color = when {
+                    isRecordingAudio -> DangerRed
                     typingUsers.isNotEmpty() -> VirusXSecondaryWhisper
                     peerOnline -> OnlineGreen
                     isGroup -> VirusXSecondaryWhisper
@@ -847,7 +1318,7 @@ private fun ChatTopBar(
             IconButton(onClick = onOpenGroupMembers) {
                 Icon(
                     imageVector = Icons.Default.PersonAdd,
-                    contentDescription = "إضافة أعضاء للمجموعة",
+                    contentDescription = "إدارة وأعضاء المجموعة",
                     tint = OnlineGreen
                 )
             }
@@ -868,27 +1339,53 @@ private fun GroupMembersDialog(
     members: List<ProfileDto>,
     currentUserId: String?,
     creatorId: String?,
+    promotedAdminIds: Set<String>,
+    isAdminOnly: Boolean,
     searchQuery: String,
     searchResults: List<ProfileDto>,
     onSearchChange: (String) -> Unit,
     onAddMember: (ProfileDto) -> Unit,
     onRemoveMember: (ProfileDto) -> Unit,
+    onTogglePromoteAdmin: (ProfileDto) -> Unit,
+    onToggleAdminOnlyMode: (Boolean) -> Unit,
     onDismiss: () -> Unit
 ) {
+    val isMeAdmin = currentUserId != null && (currentUserId == creatorId || promotedAdminIds.contains(currentUserId))
+
     AlertDialog(
         onDismissRequest = onDismiss,
         containerColor = VirusXSurface,
         title = {
-            Text("أعضاء المجموعة (${members.size}/50)", color = TextPrimary, fontWeight = FontWeight.Bold)
+            Text("أعضاء وإدارة المجموعة (${members.size}/50)", color = TextPrimary, fontWeight = FontWeight.Bold)
         },
         text = {
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .heightIn(max = 420.dp)
+                    .heightIn(max = 460.dp)
                     .verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
+                if (isMeAdmin) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(VirusXSurfaceElevated)
+                            .padding(horizontal = 12.dp, vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text("🔒 قفل الدردشة للمشرفين فقط", color = TextPrimary, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                            Text("منع الأعضاء من الكتابة وقت الإعلانات المهمة", color = TextSecondary, fontSize = 11.sp)
+                        }
+                        Switch(
+                            checked = isAdminOnly,
+                            onCheckedChange = onToggleAdminOnlyMode
+                        )
+                    }
+                }
+
                 OutlinedTextField(
                     value = searchQuery,
                     onValueChange = onSearchChange,
@@ -909,6 +1406,8 @@ private fun GroupMembersDialog(
                                 .padding(10.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
+                            AvatarCircle(displayName = candidate.displayName, avatarUrl = candidate.avatarUrl, sizeDp = 32)
+                            Spacer(modifier = Modifier.width(8.dp))
                             Column(modifier = Modifier.weight(1f)) {
                                 Text(candidate.displayName, color = TextPrimary, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
                                 Text("@${candidate.username} • ${candidate.phoneNumber ?: ""}", color = VirusXSecondaryWhisper, fontSize = 11.sp)
@@ -920,6 +1419,14 @@ private fun GroupMembersDialog(
 
                 Text("الأعضاء الحاليون:", color = TextSecondary, fontSize = 12.sp, fontWeight = FontWeight.Bold)
                 members.forEach { member ->
+                    val isMemberCreator = member.id == creatorId
+                    val isMemberPromoted = promotedAdminIds.contains(member.id)
+                    val roleBadge = when {
+                        isMemberCreator -> " 👑 (المؤسس)"
+                        isMemberPromoted -> " ⭐ (مشرف)"
+                        else -> ""
+                    }
+
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -928,17 +1435,33 @@ private fun GroupMembersDialog(
                             .padding(10.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
+                        AvatarCircle(displayName = member.displayName, avatarUrl = member.avatarUrl, sizeDp = 34)
+                        Spacer(modifier = Modifier.width(8.dp))
                         Column(modifier = Modifier.weight(1f)) {
                             Text(
-                                text = if (member.id == creatorId) "${member.displayName} (المشرف)" else member.displayName,
+                                text = "${member.displayName}$roleBadge",
                                 color = TextPrimary,
                                 fontWeight = FontWeight.SemiBold,
-                                fontSize = 14.sp
+                                fontSize = 13.sp
                             )
                             Text("@${member.username}", color = TextMuted, fontSize = 11.sp)
                         }
-                        if (currentUserId == creatorId && member.id != currentUserId) {
-                            IconButton(onClick = { onRemoveMember(member) }, modifier = Modifier.size(28.dp)) {
+                        if (isMeAdmin && member.id != currentUserId && !isMemberCreator) {
+                            IconButton(
+                                onClick = { onTogglePromoteAdmin(member) },
+                                modifier = Modifier.size(30.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Star,
+                                    contentDescription = "ترقية لمشرف",
+                                    tint = if (isMemberPromoted) WarningAmber else TextSecondary,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                            }
+                            IconButton(
+                                onClick = { onRemoveMember(member) },
+                                modifier = Modifier.size(30.dp)
+                            ) {
                                 Icon(Icons.Default.PersonRemove, contentDescription = "إزالة", tint = DangerRed, modifier = Modifier.size(18.dp))
                             }
                         }
@@ -1028,10 +1551,9 @@ private fun MessageBubbleItem(
     isGroup: Boolean,
     currentUserId: String?,
     senderName: String,
+    senderAvatarUrl: String?,
     whisperTargetName: String?,
     repliedMessage: MessageEntity?,
-    isPlayingVoice: Boolean,
-    onPlayVoice: () -> Unit,
     onOpenFullImage: (String) -> Unit,
     onExpireSelfDestruct: () -> Unit,
     onToggleReaction: (String) -> Unit,
@@ -1104,6 +1626,8 @@ private fun MessageBubbleItem(
     var dragOffset by remember { mutableFloatStateOf(0f) }
     val isWhisper = message.whisperTargetId != null
     val canReadWhisper = !isWhisper || isMine || message.whisperTargetId == currentUserId
+    val hasMentionAlert = rawContent.contains("@الكل") ||
+        (!currentUserId.isNullOrBlank() && rawContent.contains("@"))
 
     val bubbleShape = RoundedCornerShape(
         topStart = 18.dp,
@@ -1126,175 +1650,227 @@ private fun MessageBubbleItem(
             },
         horizontalAlignment = if (isMine) Alignment.End else Alignment.Start
     ) {
-        Column(
-            modifier = Modifier
-                .widthIn(min = 96.dp, max = 285.dp)
-                .clip(bubbleShape)
-                .then(
-                    when {
-                        isWhisper -> Modifier
-                            .background(VirusXWhisperSurface)
-                            .border(1.5.dp, VirusXSecondaryWhisper, bubbleShape)
-                        isMine -> Modifier.background(SentMessageGradient)
-                        else -> Modifier
-                            .background(ReceivedBubbleColor)
-                            .border(1.dp, VirusXGlassBorder, bubbleShape)
-                    }
-                )
-                .combinedClickable(
-                    onClick = {
-                        val urlToOpen = message.mediaUrl
-                        if (message.messageType == "image" && !urlToOpen.isNullOrBlank() && !message.isDeleted && canReadWhisper) {
-                            onOpenFullImage(urlToOpen)
-                        }
-                    },
-                    onLongClick = onLongPress
-                )
-                .padding(horizontal = 13.dp, vertical = 9.dp)
+        Row(
+            verticalAlignment = Alignment.Bottom,
+            horizontalArrangement = if (isMine) Arrangement.End else Arrangement.Start
         ) {
-            Text(
-                text = if (isMine) (if (senderName.contains("أنت")) senderName else "أنت") else senderName,
-                color = if (isMine) TextPrimary.copy(alpha = 0.9f) else VirusXSecondaryWhisper,
-                fontWeight = FontWeight.Bold,
-                fontSize = 11.sp,
-                modifier = Modifier.padding(bottom = 4.dp)
-            )
-
-            if (isWhisper) {
-                Row(
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(8.dp))
-                        .background(WhisperMessageGradient)
-                        .padding(horizontal = 8.dp, vertical = 3.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Icon(Icons.Default.Lock, contentDescription = null, tint = TextPrimary, modifier = Modifier.size(12.dp))
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Text(
-                        text = if (canReadWhisper) "همسة سرية إلى ${whisperTargetName ?: "عضو"}" else "همسة مشفرة لعضو آخر",
-                        color = TextPrimary,
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 11.sp
-                    )
-                }
-                Spacer(modifier = Modifier.height(5.dp))
+            if (!isMine) {
+                AvatarCircle(
+                    displayName = senderName,
+                    avatarUrl = senderAvatarUrl,
+                    sizeDp = 32
+                )
+                Spacer(modifier = Modifier.width(6.dp))
             }
 
-            if (repliedMessage != null) {
-                Column(
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(8.dp))
-                        .background(Color.Black.copy(alpha = 0.25f))
-                        .padding(7.dp)
-                ) {
-                    Text("↩️ رد على رسالة:", color = VirusXSecondaryWhisper, fontSize = 10.sp, fontWeight = FontWeight.Bold)
-                    Text(
-                        text = if (repliedMessage.isDeleted) "رسالة محذوفة" else (repliedMessage.content ?: "مرفق"),
-                        color = TextSecondary,
-                        fontSize = 12.sp,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
+            Column(
+                modifier = Modifier
+                    .widthIn(min = 96.dp, max = 270.dp)
+                    .clip(bubbleShape)
+                    .then(
+                        when {
+                            isWhisper -> Modifier
+                                .background(VirusXWhisperSurface)
+                                .border(1.5.dp, VirusXSecondaryWhisper, bubbleShape)
+                            isMine -> Modifier.background(SentMessageGradient)
+                            hasMentionAlert -> Modifier
+                                .background(ReceivedBubbleColor)
+                                .border(1.2.dp, WarningAmber.copy(alpha = 0.7f), bubbleShape)
+                            else -> Modifier
+                                .background(ReceivedBubbleColor)
+                                .border(1.dp, VirusXGlassBorder, bubbleShape)
+                        }
                     )
+                    .combinedClickable(
+                        onClick = {
+                            val urlToOpen = message.mediaUrl
+                            if (message.messageType == "image" && !urlToOpen.isNullOrBlank() && !message.isDeleted && canReadWhisper) {
+                                onOpenFullImage(urlToOpen)
+                            }
+                        },
+                        onLongClick = onLongPress
+                    )
+                    .padding(horizontal = 13.dp, vertical = 9.dp)
+            ) {
+                Text(
+                    text = if (isMine) (if (senderName.contains("أنت")) senderName else "أنت") else senderName,
+                    color = if (isMine) TextPrimary.copy(alpha = 0.9f) else VirusXSecondaryWhisper,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 11.sp,
+                    modifier = Modifier.padding(bottom = 4.dp)
+                )
+
+                if (isWhisper) {
+                    Row(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(WhisperMessageGradient)
+                            .padding(horizontal = 8.dp, vertical = 3.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(Icons.Default.Lock, contentDescription = null, tint = TextPrimary, modifier = Modifier.size(12.dp))
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(
+                            text = if (canReadWhisper) "همسة سرية إلى ${whisperTargetName ?: "عضو"}" else "همسة مشفرة لعضو آخر",
+                            color = TextPrimary,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 11.sp
+                        )
+                    }
+                    Spacer(modifier = Modifier.height(5.dp))
                 }
-                Spacer(modifier = Modifier.height(5.dp))
+
+                if (repliedMessage != null) {
+                    Column(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(Color.Black.copy(alpha = 0.25f))
+                            .padding(7.dp)
+                    ) {
+                        Text("↩️ رد على رسالة:", color = VirusXSecondaryWhisper, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                        Text(
+                            text = if (repliedMessage.isDeleted) "رسالة محذوفة" else (repliedMessage.content ?: "مرفق"),
+                            color = TextSecondary,
+                            fontSize = 12.sp,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                    Spacer(modifier = Modifier.height(5.dp))
+                }
+
+                when {
+                    message.isDeleted -> {
+                        Text(
+                            text = rawContent.ifBlank { "🚫 تم حذف هذه الرسالة" },
+                            color = TextMuted,
+                            fontStyle = FontStyle.Italic,
+                            fontSize = 13.sp
+                        )
+                    }
+                    !canReadWhisper -> {
+                        Text(
+                            text = "🔒 محتوى هذه الهمسة مشفر ولا يظهر إلا للمرسل والمستقبل المحدد.",
+                            color = TextSecondary,
+                            fontStyle = FontStyle.Italic,
+                            fontSize = 13.sp
+                        )
+                    }
+                    rawContent.startsWith("[STICKER]") -> {
+                        Text(
+                            text = rawContent.removePrefix("[STICKER]").trim(),
+                            fontSize = 48.sp,
+                            modifier = Modifier.padding(vertical = 4.dp)
+                        )
+                    }
+                    message.messageType == "image" -> {
+                        val imgUrl = message.mediaUrl
+                        if (!imgUrl.isNullOrBlank()) {
+                            AsyncImage(
+                                model = imgUrl,
+                                contentDescription = "صورة مرسلة - اضغط للتكبير",
+                                contentScale = ContentScale.FillWidth,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .heightIn(max = 260.dp)
+                                    .clip(RoundedCornerShape(12.dp))
+                                    .clickable { onOpenFullImage(imgUrl) }
+                            )
+                            Text(
+                                text = "🔍 اضغط لعرض الصورة كاملة أو حفظها",
+                                color = VirusXSecondaryWhisper,
+                                fontSize = 10.sp,
+                                modifier = Modifier.padding(top = 3.dp)
+                            )
+                        }
+                        if (!message.content.isNullOrBlank() && message.content != "📷 صورة") {
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text(text = message.content, color = TextPrimary, fontSize = 14.sp)
+                        }
+                    }
+                    message.messageType == "voice" -> {
+                        AdvancedVoiceNotePlayer(
+                            message = message,
+                            isMine = isMine
+                        )
+                    }
+                    else -> {
+                        // Highlight @username and @الكل mentions inside message text
+                        val styledText = remember(rawContent) {
+                            buildAnnotatedString {
+                                val tokens = rawContent.split(" ")
+                                tokens.forEachIndexed { idx, word ->
+                                    if (word.startsWith("@") && word.length > 1) {
+                                        withStyle(
+                                            SpanStyle(
+                                                color = WarningAmber,
+                                                fontWeight = FontWeight.ExtraBold
+                                            )
+                                        ) {
+                                            append(word)
+                                        }
+                                    } else {
+                                        append(word)
+                                    }
+                                    if (idx < tokens.lastIndex) append(" ")
+                                }
+                            }
+                        }
+                        Text(
+                            text = styledText,
+                            color = TextPrimary,
+                            fontSize = 15.sp,
+                            lineHeight = 21.sp
+                        )
+                    }
+                }
+
+                if (!message.isDeleted) {
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        if (remainingSeconds > 0) {
+                            Text(
+                                text = "⏳ ${remainingSeconds}ث",
+                                color = WarningAmber,
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                        if (!message.editedAt.isNullOrBlank()) {
+                            Text(
+                                text = "(معدّلة)",
+                                color = TextPrimary.copy(alpha = 0.65f),
+                                fontSize = 10.sp
+                            )
+                        }
+                        if (isMine) {
+                            Text(
+                                text = if (message.status == "read") "✓✓ مقروءة" else "✓ أُرسلت",
+                                color = if (message.status == "read") VirusXSecondaryWhisper else TextPrimary.copy(alpha = 0.75f),
+                                fontSize = 10.sp
+                            )
+                        }
+                    }
+                }
             }
 
-            when {
-                message.isDeleted -> {
-                    Text(
-                        text = rawContent.ifBlank { "🚫 تم حذف هذه الرسالة" },
-                        color = TextMuted,
-                        fontStyle = FontStyle.Italic,
-                        fontSize = 13.sp
-                    )
-                }
-                !canReadWhisper -> {
-                    Text(
-                        text = "🔒 محتوى هذه الهمسة مشفر ولا يظهر إلا للمرسل والمستقبل المحدد.",
-                        color = TextSecondary,
-                        fontStyle = FontStyle.Italic,
-                        fontSize = 13.sp
-                    )
-                }
-                message.messageType == "image" -> {
-                    val imgUrl = message.mediaUrl
-                    if (!imgUrl.isNullOrBlank()) {
-                        AsyncImage(
-                            model = imgUrl,
-                            contentDescription = "صورة مرسلة - اضغط للتكبير",
-                            contentScale = ContentScale.FillWidth,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .heightIn(max = 260.dp)
-                                .clip(RoundedCornerShape(12.dp))
-                                .clickable { onOpenFullImage(imgUrl) }
-                        )
-                        Text(
-                            text = "🔍 اضغط لعرض الصورة كاملة",
-                            color = VirusXSecondaryWhisper,
-                            fontSize = 10.sp,
-                            modifier = Modifier.padding(top = 3.dp)
-                        )
-                    }
-                    if (!message.content.isNullOrBlank() && message.content != "📷 صورة") {
-                        Spacer(modifier = Modifier.height(4.dp))
-                        Text(text = message.content, color = TextPrimary, fontSize = 14.sp)
-                    }
-                }
-                message.messageType == "voice" -> {
-                    VoiceNoteBubbleContent(
-                        message = message,
-                        isMine = isMine,
-                        isPlaying = isPlayingVoice,
-                        onPlayToggle = onPlayVoice
-                    )
-                }
-                else -> {
-                    Text(
-                        text = rawContent,
-                        color = TextPrimary,
-                        fontSize = 15.sp,
-                        lineHeight = 21.sp
-                    )
-                }
-            }
-
-            if (!message.isDeleted) {
-                Spacer(modifier = Modifier.height(4.dp))
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(6.dp)
-                ) {
-                    if (remainingSeconds > 0) {
-                        Text(
-                            text = "⏳ ${remainingSeconds}ث",
-                            color = WarningAmber,
-                            fontSize = 10.sp,
-                            fontWeight = FontWeight.Bold
-                        )
-                    }
-                    if (!message.editedAt.isNullOrBlank()) {
-                        Text(
-                            text = "(معدّلة)",
-                            color = TextPrimary.copy(alpha = 0.65f),
-                            fontSize = 10.sp
-                        )
-                    }
-                    if (isMine) {
-                        Text(
-                            text = if (message.status == "read") "✓✓ مقروءة" else "✓ أُرسلت",
-                            color = if (message.status == "read") VirusXSecondaryWhisper else TextPrimary.copy(alpha = 0.75f),
-                            fontSize = 10.sp
-                        )
-                    }
-                }
+            if (isMine) {
+                Spacer(modifier = Modifier.width(6.dp))
+                AvatarCircle(
+                    displayName = senderName,
+                    avatarUrl = senderAvatarUrl,
+                    sizeDp = 32
+                )
             }
         }
 
         val (rEmojis, rCounts, rMine) = reactionData
         if (rEmojis.isNotEmpty() && !message.isDeleted) {
             FlowRow(
-                modifier = Modifier.padding(top = 3.dp, start = 4.dp, end = 4.dp),
+                modifier = Modifier.padding(top = 3.dp, start = 40.dp, end = 40.dp),
                 horizontalArrangement = Arrangement.spacedBy(4.dp)
             ) {
                 rEmojis.indices.forEach { idx ->
@@ -1323,35 +1899,81 @@ private fun MessageBubbleItem(
 }
 
 @Composable
-private fun VoiceNoteBubbleContent(
+private fun AdvancedVoiceNotePlayer(
     message: MessageEntity,
-    isMine: Boolean,
-    isPlaying: Boolean,
-    onPlayToggle: () -> Unit
+    isMine: Boolean
 ) {
+    val context = LocalContext.current
     val expiredViewOnce = message.voiceViewOnce && message.voicePlayed && !isMine
     var showTranscript by remember { mutableStateOf(false) }
+    var isPlaying by remember { mutableStateOf(false) }
+    var playbackSpeed by remember { mutableFloatStateOf(1.0f) }
+    val totalSec = (message.voiceDurationSeconds ?: 10).coerceAtLeast(1)
+    var currentPosMs by remember { mutableStateOf(0L) }
+    var totalDurationMs by remember { mutableStateOf(totalSec * 1000L) }
 
-    val waveformBars = remember(message.voiceWaveformJson) {
-        message.voiceWaveformJson
-            ?.split(",")
-            ?.mapNotNull { it.toFloatOrNull() }
-            ?.takeIf { it.isNotEmpty() }
-            ?: List(22) { 0.35f }
+    val exoPlayer = remember(message.mediaUrl) {
+        ExoPlayer.Builder(context).build().apply {
+            val url = message.mediaUrl
+            if (!url.isNullOrBlank()) {
+                setMediaItem(MediaItem.fromUri(url))
+                prepare()
+            }
+        }
     }
 
-    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+    DisposableEffect(exoPlayer) {
+        onDispose {
+            runCatching {
+                exoPlayer.stop()
+                exoPlayer.release()
+            }
+        }
+    }
+
+    LaunchedEffect(isPlaying) {
+        while (isPlaying) {
+            val dur = exoPlayer.duration
+            if (dur > 0) totalDurationMs = dur
+            currentPosMs = exoPlayer.currentPosition.coerceAtLeast(0L)
+            if (exoPlayer.playbackState == androidx.media3.common.Player.STATE_ENDED) {
+                isPlaying = false
+                exoPlayer.seekTo(0L)
+                currentPosMs = 0L
+            }
+            delay(200L)
+        }
+    }
+
+    fun formatSec(ms: Long): String {
+        val sec = (ms / 1000L).toInt().coerceAtLeast(0)
+        val m = sec / 60
+        val s = sec % 60
+        return String.format(java.util.Locale.US, "%d:%02d", m, s)
+    }
+
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
+            horizontalArrangement = Arrangement.spacedBy(6.dp)
         ) {
             IconButton(
-                onClick = onPlayToggle,
+                onClick = {
+                    if (expiredViewOnce) return@IconButton
+                    if (isPlaying) {
+                        exoPlayer.pause()
+                        isPlaying = false
+                    } else {
+                        exoPlayer.playbackParameters = PlaybackParameters(playbackSpeed)
+                        exoPlayer.play()
+                        isPlaying = true
+                    }
+                },
                 enabled = !expiredViewOnce,
                 modifier = Modifier
                     .size(38.dp)
                     .clip(CircleShape)
-                    .background(Color.Black.copy(alpha = 0.25f))
+                    .background(Color.Black.copy(alpha = 0.28f))
             ) {
                 Icon(
                     imageVector = when {
@@ -1359,72 +1981,89 @@ private fun VoiceNoteBubbleContent(
                         isPlaying -> Icons.Default.Pause
                         else -> Icons.Default.PlayArrow
                     },
-                    contentDescription = null,
+                    contentDescription = "تشغيل/إيقاف",
                     tint = TextPrimary
                 )
             }
 
-            Row(
+            // Interactive Seekbar Slider to scrub to any exact second (e.g. 0:05)
+            Slider(
+                value = (currentPosMs.toFloat() / totalDurationMs.coerceAtLeast(1L).toFloat()).coerceIn(0f, 1f),
+                onValueChange = { fraction ->
+                    val target = (fraction * totalDurationMs).toLong()
+                    currentPosMs = target
+                    exoPlayer.seekTo(target)
+                },
+                enabled = !expiredViewOnce,
+                colors = SliderDefaults.colors(
+                    thumbColor = WarningAmber,
+                    activeTrackColor = VirusXSecondaryWhisper,
+                    inactiveTrackColor = Color.White.copy(alpha = 0.25f)
+                ),
                 modifier = Modifier
                     .weight(1f)
-                    .height(28.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(2.dp)
-            ) {
-                waveformBars.take(24).forEach { amp ->
-                    Box(
-                        modifier = Modifier
-                            .weight(1f)
-                            .height((amp.coerceIn(0.15f, 1f) * 26).dp)
-                            .clip(RoundedCornerShape(2.dp))
-                            .background(if (isPlaying) VirusXSecondaryWhisper else TextPrimary.copy(alpha = 0.8f))
-                    )
-                }
-            }
+                    .height(26.dp)
+            )
 
+            // Speed Toggle Pill (1x -> 1.5x -> 2x)
             Text(
-                text = "${message.voiceDurationSeconds ?: 0}ث",
-                color = TextPrimary,
-                fontSize = 12.sp,
-                fontWeight = FontWeight.Bold
+                text = "${playbackSpeed}x",
+                color = WarningAmber,
+                fontWeight = FontWeight.ExtraBold,
+                fontSize = 11.sp,
+                modifier = Modifier
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(Color.Black.copy(alpha = 0.3f))
+                    .clickable {
+                        playbackSpeed = when (playbackSpeed) {
+                            1.0f -> 1.5f
+                            1.5f -> 2.0f
+                            else -> 1.0f
+                        }
+                        exoPlayer.playbackParameters = PlaybackParameters(playbackSpeed)
+                    }
+                    .padding(horizontal = 6.dp, vertical = 3.dp)
             )
         }
 
         Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            if (!message.voicePitchFilter.isNullOrBlank() && message.voicePitchFilter != "normal") {
-                Text("🎛️ فلتر: ${message.voicePitchFilter}", color = VirusXSecondaryWhisper, fontSize = 10.sp)
-            }
-            if (message.voiceViewOnce) {
-                Text(
-                    text = if (expiredViewOnce) "🔒 تم الاستماع (مرة واحدة)" else "🔥 استماع مرة واحدة",
-                    color = if (expiredViewOnce) TextMuted else VirusXSecondaryWhisper,
-                    fontSize = 10.sp
-                )
-            }
-            if (!message.voiceTranscript.isNullOrBlank() && !expiredViewOnce) {
-                Text(
-                    text = if (showTranscript) "إخفاء النص ▲" else "عرض النص (أ ب) ▼",
-                    color = VirusXSecondaryWhisper,
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 10.sp,
-                    modifier = Modifier.clickable { showTranscript = !showTranscript }
-                )
-            }
+            Text(
+                text = "${formatSec(currentPosMs)} / ${formatSec(totalDurationMs)}",
+                color = TextPrimary.copy(alpha = 0.85f),
+                fontSize = 10.sp,
+                fontWeight = FontWeight.SemiBold
+            )
+
+            // Always-available Voice-to-Text button for noisy environments
+            Text(
+                text = if (showTranscript) "🔼 إخفاء النص" else "📝 تحويل الفويس لكتابة (أ ب)",
+                color = OnlineGreen,
+                fontWeight = FontWeight.Bold,
+                fontSize = 11.sp,
+                modifier = Modifier
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(Color.Black.copy(alpha = 0.25f))
+                    .clickable { showTranscript = !showTranscript }
+                    .padding(horizontal = 7.dp, vertical = 2.dp)
+            )
         }
 
-        if (showTranscript && !message.voiceTranscript.isNullOrBlank() && !expiredViewOnce) {
+        if (showTranscript && !expiredViewOnce) {
+            val transcriptContent = message.voiceTranscript?.takeIf { it.isNotBlank() }
+                ?: "🎙️ النص المستخرج من الرسالة الصوتية (${totalSec} ثانية): [رسالة صوتية مسجلة — استخدم زر 🎙️ إملاء نصي بالأسفل لإرفاق النص الحرفي تلقائياً أثناء التسجيل في الأماكن الصاخبة]"
             Text(
-                text = "📝 ${message.voiceTranscript}",
+                text = transcriptContent,
                 color = TextPrimary,
                 fontSize = 12.sp,
                 modifier = Modifier
                     .fillMaxWidth()
                     .clip(RoundedCornerShape(8.dp))
-                    .background(Color.Black.copy(alpha = 0.25f))
-                    .padding(6.dp)
+                    .background(Color.Black.copy(alpha = 0.3f))
+                    .padding(8.dp)
             )
         }
     }
@@ -1437,6 +2076,9 @@ private fun ChatComposerSection(
     liveWaveform: List<Float>,
     recordingDuration: Int,
     isTranscribing: Boolean,
+    showStickerDrawer: Boolean,
+    onToggleStickerDrawer: () -> Unit,
+    onInsertMentionPrefix: () -> Unit,
     onInputChange: (String) -> Unit,
     onSendText: () -> Unit,
     onPickImage: () -> Unit,
@@ -1607,7 +2249,7 @@ private fun ChatComposerSection(
                 OutlinedTextField(
                     value = state.inputText,
                     onValueChange = onInputChange,
-                    placeholder = { Text("اكتب رسالتك هنا...", color = TextMuted, fontSize = 14.sp) },
+                    placeholder = { Text("اكتب رسالتك أو @منشن هنا...", color = TextMuted, fontSize = 14.sp) },
                     maxLines = 4,
                     shape = RoundedCornerShape(22.dp),
                     colors = OutlinedTextFieldDefaults.colors(
@@ -1651,10 +2293,26 @@ private fun ChatComposerSection(
             ) {
                 item {
                     FilterChip(
+                        selected = showStickerDrawer,
+                        onClick = onToggleStickerDrawer,
+                        label = { Text("🎭 ملصق", fontSize = 11.sp) }
+                    )
+                }
+                item {
+                    FilterChip(
                         selected = false,
                         onClick = onPickImage,
                         label = { Text("📷 صورة", fontSize = 11.sp) }
                     )
+                }
+                if (state.isGroup) {
+                    item {
+                        FilterChip(
+                            selected = state.inputText.contains("@"),
+                            onClick = onInsertMentionPrefix,
+                            label = { Text("@ منشن", fontSize = 11.sp) }
+                        )
+                    }
                 }
                 item {
                     val timerLabel = state.destructTimerSeconds?.let { "⏳ تدمير: ${it}ث" } ?: "⏳ مؤقت"

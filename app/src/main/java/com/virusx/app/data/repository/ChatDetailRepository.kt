@@ -582,4 +582,76 @@ class ChatDetailRepository @Inject constructor(
         scaledBitmap.compress(Bitmap.CompressFormat.JPEG, 82, output)
         return output.toByteArray()
     }
+
+    suspend fun pinChatMessage(chatId: String, messageId: String?, previewText: String?): Result<Unit> = runCatching {
+        runCatching {
+            postgrest.rpc(
+                function = "pin_chat_message",
+                parameters = buildJsonObject {
+                    put("_chat_id", chatId)
+                    put("_message_id", messageId)
+                    put("_preview_text", previewText)
+                }
+            )
+        }.onFailure {
+            postgrest.from("chats").update(
+                buildJsonObject {
+                    put("pinned_message_id", messageId)
+                    put("pinned_message_text", previewText)
+                }
+            ) { filter { eq("id", chatId) } }
+        }
+        Unit
+    }
+
+    suspend fun setGroupAdminOnly(chatId: String, adminOnly: Boolean): Result<Unit> = runCatching {
+        runCatching {
+            postgrest.rpc(
+                function = "set_group_admin_only",
+                parameters = buildJsonObject {
+                    put("_chat_id", chatId)
+                    put("_admin_only", adminOnly)
+                }
+            )
+        }.onFailure {
+            postgrest.from("chats").update(
+                buildJsonObject { put("admin_only", adminOnly) }
+            ) { filter { eq("id", chatId) } }
+        }
+        Unit
+    }
+
+    suspend fun setGroupMemberRole(chatId: String, targetUserId: String, role: String): Result<Unit> = runCatching {
+        runCatching {
+            postgrest.rpc(
+                function = "set_group_member_role",
+                parameters = buildJsonObject {
+                    put("_chat_id", chatId)
+                    put("_target_user_id", targetUserId)
+                    put("_new_role", role)
+                }
+            )
+        }.onFailure {
+            postgrest.from("chat_members").update(
+                buildJsonObject { put("role", role) }
+            ) {
+                filter {
+                    eq("chat_id", chatId)
+                    eq("user_id", targetUserId)
+                }
+            }
+        }
+        Unit
+    }
+
+    suspend fun updateVoiceTranscript(messageId: String, transcriptText: String): Result<Unit> = runCatching {
+        postgrest.from("messages").update(
+            buildJsonObject { put("voice_transcript", transcriptText) }
+        ) { filter { eq("id", messageId) } }
+        val current = messageDao.getMessageById(messageId)
+        if (current != null) {
+            messageDao.upsertMessages(listOf(current.copy(voiceTranscript = transcriptText)))
+        }
+        Unit
+    }
 }

@@ -40,7 +40,10 @@ data class ChatDto(
     @SerialName("name") val name: String? = null,
     @SerialName("avatar_url") val avatarUrl: String? = null,
     @SerialName("created_by") val createdBy: String? = null,
-    @SerialName("created_at") val createdAt: String? = null
+    @SerialName("created_at") val createdAt: String? = null,
+    @SerialName("pinned_message_id") val pinnedMessageId: String? = null,
+    @SerialName("pinned_message_text") val pinnedMessageText: String? = null,
+    @SerialName("admin_only") val adminOnly: Boolean = false
 )
 
 @Serializable
