@@ -305,7 +305,7 @@ fun ChatScreen(
                         isMine = isMine,
                         isGroup = state.isGroup,
                         currentUserId = state.currentUserId,
-                        senderName = senderProfile?.displayName ?: "عضو",
+                        senderName = if (isMine) "${state.currentUserName} (أنت)" else (senderProfile?.displayName ?: if (!state.isGroup) state.chatTitle else "عضو"),
                         whisperTargetName = whisperTargetProfile?.displayName,
                         repliedMessage = repliedMessage,
                         isPlayingVoice = playingMessageId == msg.id,
@@ -910,15 +910,13 @@ private fun MessageBubbleItem(
                 )
                 .padding(horizontal = 13.dp, vertical = 9.dp)
         ) {
-            if (isGroup && !isMine) {
-                Text(
-                    text = senderName,
-                    color = VirusXSecondaryWhisper,
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 12.sp,
-                    modifier = Modifier.padding(bottom = 3.dp)
-                )
-            }
+            Text(
+                text = if (isMine) (if (senderName.contains("أنت")) senderName else "أنت") else senderName,
+                color = if (isMine) TextPrimary.copy(alpha = 0.9f) else VirusXSecondaryWhisper,
+                fontWeight = FontWeight.Bold,
+                fontSize = 11.sp,
+                modifier = Modifier.padding(bottom = 4.dp)
+            )
 
             if (isWhisper) {
                 Row(

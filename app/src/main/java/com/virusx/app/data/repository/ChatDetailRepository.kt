@@ -120,13 +120,23 @@ class ChatDetailRepository @Inject constructor(
     }
 
     suspend fun addMemberToGroup(chatId: String, newUserId: String): Result<Unit> = runCatching {
-        postgrest.rpc(
-            function = "add_group_member",
-            parameters = buildJsonObject {
-                put("_chat_id", chatId)
-                put("_new_user_id", newUserId)
-            }
-        )
+        runCatching {
+            postgrest.rpc(
+                function = "add_group_member",
+                parameters = buildJsonObject {
+                    put("_chat_id", chatId)
+                    put("_new_user_id", newUserId)
+                }
+            )
+        }.onFailure {
+            // Fallback direct insert without 'role' column if SQL patch wasn't run yet
+            postgrest.from("chat_members").insert(
+                buildJsonObject {
+                    put("chat_id", chatId)
+                    put("user_id", newUserId)
+                }
+            )
+        }
         Unit
     }
 
@@ -491,6 +501,14 @@ class ChatDetailRepository @Inject constructor(
     }
 
     private suspend fun handleIncomingMessageSideEffects(incoming: MessageDto) {
+        if (profileDao.getProfileById(incoming.senderId) == null) {
+            runCatching {
+                val p = postgrest.from("profiles")
+                    .select { filter { eq("id", incoming.senderId) } }
+                    .decodeSingleOrNull<ProfileDto>()
+                if (p != null) profileDao.upsertProfiles(listOf(p.toEntity()))
+            }
+        }
         val myId = getCurrentUserId() ?: return
         if (incoming.senderId == myId) return
 
