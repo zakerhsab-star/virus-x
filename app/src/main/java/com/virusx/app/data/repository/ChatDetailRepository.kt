@@ -648,10 +648,6 @@ class ChatDetailRepository @Inject constructor(
         postgrest.from("messages").update(
             buildJsonObject { put("voice_transcript", transcriptText) }
         ) { filter { eq("id", messageId) } }
-        val current = messageDao.getMessageById(messageId)
-        if (current != null) {
-            messageDao.upsertMessages(listOf(current.copy(voiceTranscript = transcriptText)))
-        }
         Unit
     }
 }

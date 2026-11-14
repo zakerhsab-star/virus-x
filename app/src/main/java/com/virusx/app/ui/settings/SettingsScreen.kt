@@ -100,8 +100,7 @@ fun SettingsScreen(
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                IconAccountSwitcherCard()
-            Button(onClick = onBack) {
+                IconButton(onClick = onBack) {
                     Icon(
                         imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                         contentDescription = "رجوع",
@@ -129,6 +128,7 @@ fun SettingsScreen(
             }
 
             if (state.profile?.role == "super_admin") {
+                AccountSwitcherCard()
                 Button(
                     onClick = onOpenSuperAdminPanel,
                     colors = ButtonDefaults.buttonColors(containerColor = VirusXSecondaryWhisper),
