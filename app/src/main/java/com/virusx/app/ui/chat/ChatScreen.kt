@@ -7,6 +7,7 @@ import android.net.Uri
 import android.os.Handler
 import android.os.Looper
 import android.provider.MediaStore
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -49,8 +50,6 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Forward10
-import androidx.compose.material.icons.filled.GraphicEq
-import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.Pause
@@ -63,7 +62,6 @@ import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -151,6 +149,7 @@ fun ChatScreen(
     var showGroupMembersDialog by remember { mutableStateOf(false) }
     var fullScreenImageUrl by remember { mutableStateOf<String?>(null) }
     var selectedMessageForActions by remember { mutableStateOf<MessageEntity?>(null) }
+    var isStealthCalculatorActive by remember { mutableStateOf(false) }
 
     val listState = rememberLazyListState()
 
@@ -225,134 +224,144 @@ fun ChatScreen(
     val memberMap = remember(state.members) { state.members.associateBy { it.id } }
     val messageMap = remember(messages) { messages.associateBy { it.id } }
 
-    Scaffold(
-        containerColor = VirusXBackground,
-        topBar = {
-            ChatTopBar(
-                title = state.chatTitle,
-                isGroup = state.isGroup,
-                memberCount = state.members.size,
-                peerOnline = state.peerOnline,
-                typingUsers = typingUsers.values.toList(),
-                onBack = onBack,
-                onOpenGroupMembers = { showGroupMembersDialog = true },
-                onOpenSyncDialog = { showStartSyncDialog = true }
-            )
-        }
-    ) { paddingValues ->
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(paddingValues)
-                .imePadding()
-        ) {
-            activeSyncSession?.let { session ->
-                SyncMiniPlayerBar(
-                    session = session,
-                    onTogglePlayPause = viewModel::toggleSyncSessionPlayPause,
-                    onSeekBackward = { viewModel.seekSyncSessionBy(-10.0) },
-                    onSeekForward = { viewModel.seekSyncSessionBy(10.0) }
+    Box(modifier = Modifier.fillMaxSize()) {
+        Scaffold(
+            containerColor = VirusXBackground,
+            topBar = {
+                ChatTopBar(
+                    title = state.chatTitle,
+                    isGroup = state.isGroup,
+                    memberCount = state.members.size,
+                    peerOnline = state.peerOnline,
+                    typingUsers = typingUsers.values.toList(),
+                    onBack = onBack,
+                    onActivateStealth = { isStealthCalculatorActive = true },
+                    onOpenGroupMembers = { showGroupMembersDialog = true },
+                    onOpenSyncDialog = { showStartSyncDialog = true }
                 )
             }
-
-            state.statusBanner?.let { banner ->
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .background(OnlineGreen.copy(alpha = 0.2f))
-                        .padding(horizontal = 14.dp, vertical = 7.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(banner, color = OnlineGreen, fontSize = 12.sp, modifier = Modifier.weight(1f))
-                    IconButton(onClick = viewModel::clearError, modifier = Modifier.size(22.dp)) {
-                        Icon(Icons.Default.Close, contentDescription = null, tint = OnlineGreen, modifier = Modifier.size(15.dp))
-                    }
-                }
-            }
-
-            state.errorMessage?.let { err ->
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .background(DangerRed.copy(alpha = 0.2f))
-                        .padding(horizontal = 14.dp, vertical = 7.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(err, color = TextPrimary, fontSize = 12.sp, modifier = Modifier.weight(1f))
-                    IconButton(onClick = viewModel::clearError, modifier = Modifier.size(22.dp)) {
-                        Icon(Icons.Default.Close, contentDescription = null, tint = TextPrimary, modifier = Modifier.size(15.dp))
-                    }
-                }
-            }
-
-            LazyColumn(
-                state = listState,
+        ) { paddingValues ->
+            Column(
                 modifier = Modifier
-                    .weight(1f)
-                    .fillMaxWidth()
-                    .padding(horizontal = 12.dp),
-                contentPadding = PaddingValues(vertical = 12.dp),
-                verticalArrangement = Arrangement.spacedBy(10.dp)
+                    .fillMaxSize()
+                    .padding(paddingValues)
+                    .imePadding()
             ) {
-                items(messages, key = { it.id }) { msg ->
-                    val isMine = msg.senderId == state.currentUserId
-                    val senderProfile = memberMap[msg.senderId]
-                    val whisperTargetProfile = msg.whisperTargetId?.let { memberMap[it] }
-                    val repliedMessage = msg.replyToMessageId?.let { messageMap[it] }
-
-                    MessageBubbleItem(
-                        message = msg,
-                        isMine = isMine,
-                        isGroup = state.isGroup,
-                        currentUserId = state.currentUserId,
-                        senderName = if (isMine) "${state.currentUserName} (أنت)" else (senderProfile?.displayName ?: if (!state.isGroup) state.chatTitle else "عضو"),
-                        whisperTargetName = whisperTargetProfile?.displayName,
-                        repliedMessage = repliedMessage,
-                        isPlayingVoice = playingMessageId == msg.id,
-                        onPlayVoice = { viewModel.togglePlayVoiceNote(msg) },
-                        onOpenFullImage = { url -> fullScreenImageUrl = url },
-                        onExpireSelfDestruct = { viewModel.expireSelfDestructMessage(msg.id) },
-                        onToggleReaction = { emoji -> viewModel.toggleMessageReaction(msg.id, emoji) },
-                        onSwipeReply = { viewModel.setReplyToMessage(msg) },
-                        onLongPress = { selectedMessageForActions = msg }
+                activeSyncSession?.let { session ->
+                    SyncMiniPlayerBar(
+                        session = session,
+                        onTogglePlayPause = viewModel::toggleSyncSessionPlayPause,
+                        onSeekBackward = { viewModel.seekSyncSessionBy(-10.0) },
+                        onSeekForward = { viewModel.seekSyncSessionBy(10.0) }
                     )
                 }
-            }
 
-            ChatComposerSection(
-                state = state,
-                isRecording = isRecording,
-                liveWaveform = liveWaveform,
-                recordingDuration = recordingDuration,
-                isTranscribing = isTranscribing,
-                onInputChange = viewModel::onInputTextChange,
-                onSendText = viewModel::sendTextMessage,
-                onPickImage = { imagePickerLauncher.launch("image/*") },
-                onOpenWhisperPicker = { showWhisperTargetDialog = true },
-                onCycleDestructTimer = viewModel::cycleDestructTimer,
-                onClearReply = { viewModel.setReplyToMessage(null) },
-                onCancelEdit = viewModel::cancelEditingMessage,
-                onClearWhisper = { viewModel.setWhisperTarget(null) },
-                onSelectPitchFilter = viewModel::setPitchFilter,
-                onToggleViewOnce = viewModel::toggleVoiceViewOnce,
-                onStartRecording = {
-                    val hasPerm = ContextCompat.checkSelfPermission(
-                        context,
-                        Manifest.permission.RECORD_AUDIO
-                    ) == PackageManager.PERMISSION_GRANTED
-                    if (hasPerm) viewModel.startVoiceRecording()
-                    else audioPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
-                },
-                onCancelRecording = viewModel::cancelVoiceRecording,
-                onSendVoice = viewModel::stopAndSendVoiceNote,
-                onSpeechToText = {
-                    val hasPerm = ContextCompat.checkSelfPermission(
-                        context,
-                        Manifest.permission.RECORD_AUDIO
-                    ) == PackageManager.PERMISSION_GRANTED
-                    if (hasPerm) viewModel.transcribeSpeechIntoInput()
-                    else speechPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+                state.statusBanner?.let { banner ->
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(OnlineGreen.copy(alpha = 0.2f))
+                            .padding(horizontal = 14.dp, vertical = 7.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(banner, color = OnlineGreen, fontSize = 12.sp, modifier = Modifier.weight(1f))
+                        IconButton(onClick = viewModel::clearError, modifier = Modifier.size(22.dp)) {
+                            Icon(Icons.Default.Close, contentDescription = null, tint = OnlineGreen, modifier = Modifier.size(15.dp))
+                        }
+                    }
                 }
+
+                state.errorMessage?.let { err ->
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(DangerRed.copy(alpha = 0.2f))
+                            .padding(horizontal = 14.dp, vertical = 7.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(err, color = TextPrimary, fontSize = 12.sp, modifier = Modifier.weight(1f))
+                        IconButton(onClick = viewModel::clearError, modifier = Modifier.size(22.dp)) {
+                            Icon(Icons.Default.Close, contentDescription = null, tint = TextPrimary, modifier = Modifier.size(15.dp))
+                        }
+                    }
+                }
+
+                LazyColumn(
+                    state = listState,
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxWidth()
+                        .padding(horizontal = 12.dp),
+                    contentPadding = PaddingValues(vertical = 12.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    items(messages, key = { it.id }) { msg ->
+                        val isMine = msg.senderId == state.currentUserId
+                        val senderProfile = memberMap[msg.senderId]
+                        val whisperTargetProfile = msg.whisperTargetId?.let { memberMap[it] }
+                        val repliedMessage = msg.replyToMessageId?.let { messageMap[it] }
+
+                        MessageBubbleItem(
+                            message = msg,
+                            isMine = isMine,
+                            isGroup = state.isGroup,
+                            currentUserId = state.currentUserId,
+                            senderName = if (isMine) "${state.currentUserName} (أنت)" else (senderProfile?.displayName ?: if (!state.isGroup) state.chatTitle else "عضو"),
+                            whisperTargetName = whisperTargetProfile?.displayName,
+                            repliedMessage = repliedMessage,
+                            isPlayingVoice = playingMessageId == msg.id,
+                            onPlayVoice = { viewModel.togglePlayVoiceNote(msg) },
+                            onOpenFullImage = { url -> fullScreenImageUrl = url },
+                            onExpireSelfDestruct = { viewModel.expireSelfDestructMessage(msg.id) },
+                            onToggleReaction = { emoji -> viewModel.toggleMessageReaction(msg.id, emoji) },
+                            onSwipeReply = { viewModel.setReplyToMessage(msg) },
+                            onLongPress = { selectedMessageForActions = msg }
+                        )
+                    }
+                }
+
+                ChatComposerSection(
+                    state = state,
+                    isRecording = isRecording,
+                    liveWaveform = liveWaveform,
+                    recordingDuration = recordingDuration,
+                    isTranscribing = isTranscribing,
+                    onInputChange = viewModel::onInputTextChange,
+                    onSendText = viewModel::sendTextMessage,
+                    onPickImage = { imagePickerLauncher.launch("image/*") },
+                    onOpenWhisperPicker = { showWhisperTargetDialog = true },
+                    onCycleDestructTimer = viewModel::cycleDestructTimer,
+                    onClearReply = { viewModel.setReplyToMessage(null) },
+                    onCancelEdit = viewModel::cancelEditingMessage,
+                    onClearWhisper = { viewModel.setWhisperTarget(null) },
+                    onSelectPitchFilter = viewModel::setPitchFilter,
+                    onToggleViewOnce = viewModel::toggleVoiceViewOnce,
+                    onStartRecording = {
+                        val hasPerm = ContextCompat.checkSelfPermission(
+                            context,
+                            Manifest.permission.RECORD_AUDIO
+                        ) == PackageManager.PERMISSION_GRANTED
+                        if (hasPerm) viewModel.startVoiceRecording()
+                        else audioPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+                    },
+                    onCancelRecording = viewModel::cancelVoiceRecording,
+                    onSendVoice = viewModel::stopAndSendVoiceNote,
+                    onSpeechToText = {
+                        val hasPerm = ContextCompat.checkSelfPermission(
+                            context,
+                            Manifest.permission.RECORD_AUDIO
+                        ) == PackageManager.PERMISSION_GRANTED
+                        if (hasPerm) viewModel.transcribeSpeechIntoInput()
+                        else speechPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+                    }
+                )
+            }
+        }
+
+        if (isStealthCalculatorActive) {
+            StealthCalculatorOverlay(
+                secretCode = "2000",
+                onUnlock = { isStealthCalculatorActive = false }
             )
         }
     }
@@ -541,6 +550,230 @@ fun ChatScreen(
 }
 
 @Composable
+private fun StealthCalculatorOverlay(
+    secretCode: String = "2000",
+    onUnlock: () -> Unit
+) {
+    // Prevent accidental back button exit while in stealth mode
+    BackHandler(enabled = true) {
+        // Stay in calculator unless secret code 2000= is entered
+    }
+
+    var display by remember { mutableStateOf("0") }
+    var expression by remember { mutableStateOf("") }
+    var prevOperand by remember { mutableStateOf<Double?>(null) }
+    var pendingOp by remember { mutableStateOf<String?>(null) }
+    var resetDisplayOnNextDigit by remember { mutableStateOf(false) }
+
+    fun formatResult(value: Double): String {
+        return if (value % 1.0 == 0.0) {
+            value.toLong().toString()
+        } else {
+            String.format(java.util.Locale.US, "%.4f", value).trimEnd('0').trimEnd('.')
+        }
+    }
+
+    fun handleInput(btn: String) {
+        when (btn) {
+            "C" -> {
+                display = "0"
+                expression = ""
+                prevOperand = null
+                pendingOp = null
+                resetDisplayOnNextDigit = false
+            }
+            "⌫" -> {
+                display = if (display.length > 1) display.dropLast(1) else "0"
+            }
+            "±" -> {
+                if (display != "0") {
+                    display = if (display.startsWith("-")) display.drop(1) else "-$display"
+                }
+            }
+            "%" -> {
+                val v = display.toDoubleOrNull() ?: 0.0
+                display = formatResult(v / 100.0)
+                resetDisplayOnNextDigit = true
+            }
+            "+", "-", "×", "÷" -> {
+                val currentVal = display.toDoubleOrNull() ?: 0.0
+                if (prevOperand != null && pendingOp != null && !resetDisplayOnNextDigit) {
+                    val prev = prevOperand ?: 0.0
+                    val computed = when (pendingOp) {
+                        "+" -> prev + currentVal
+                        "-" -> prev - currentVal
+                        "×" -> prev * currentVal
+                        "÷" -> if (currentVal != 0.0) prev / currentVal else 0.0
+                        else -> currentVal
+                    }
+                    prevOperand = computed
+                    display = formatResult(computed)
+                } else {
+                    prevOperand = currentVal
+                }
+                pendingOp = btn
+                expression = "${formatResult(prevOperand ?: 0.0)} $btn"
+                resetDisplayOnNextDigit = true
+            }
+            "=" -> {
+                if (display == secretCode && pendingOp == null) {
+                    onUnlock()
+                    return
+                }
+                val currentVal = display.toDoubleOrNull() ?: 0.0
+                val prev = prevOperand
+                val op = pendingOp
+                if (prev != null && op != null) {
+                    val result = when (op) {
+                        "+" -> prev + currentVal
+                        "-" -> prev - currentVal
+                        "×" -> prev * currentVal
+                        "÷" -> if (currentVal != 0.0) prev / currentVal else 0.0
+                        else -> currentVal
+                    }
+                    expression = "${formatResult(prev)} $op ${formatResult(currentVal)} ="
+                    display = formatResult(result)
+                    prevOperand = null
+                    pendingOp = null
+                    resetDisplayOnNextDigit = true
+                }
+            }
+            "." -> {
+                if (resetDisplayOnNextDigit) {
+                    display = "0."
+                    resetDisplayOnNextDigit = false
+                } else if (!display.contains(".")) {
+                    display += "."
+                }
+            }
+            else -> {
+                // Digit 0-9
+                if (display == "0" || resetDisplayOnNextDigit) {
+                    display = btn
+                    resetDisplayOnNextDigit = false
+                } else if (display.length < 12) {
+                    display += btn
+                }
+            }
+        }
+    }
+
+    val buttonRows = listOf(
+        listOf("C", "±", "%", "÷"),
+        listOf("7", "8", "9", "×"),
+        listOf("4", "5", "6", "-"),
+        listOf("1", "2", "3", "+"),
+        listOf("0", ".", "⌫", "=")
+    )
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color(0xFF0A0D12))
+            .statusBarsPadding()
+            .padding(16.dp),
+        verticalArrangement = Arrangement.SpaceBetween
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 8.dp, vertical = 4.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = "Calculator",
+                color = Color(0xFF8A94A6),
+                fontSize = 15.sp,
+                fontWeight = FontWeight.Medium
+            )
+            Text(
+                text = "DEG",
+                color = Color(0xFF4E5D78),
+                fontSize = 12.sp,
+                fontWeight = FontWeight.Bold
+            )
+        }
+
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .weight(1f)
+                .padding(horizontal = 12.dp, vertical = 20.dp),
+            verticalArrangement = Arrangement.Bottom,
+            horizontalAlignment = Alignment.End
+        ) {
+            if (expression.isNotEmpty()) {
+                Text(
+                    text = expression,
+                    color = Color(0xFF8A94A6),
+                    fontSize = 22.sp,
+                    textAlign = TextAlign.End,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+            }
+            Text(
+                text = display,
+                color = Color.White,
+                fontSize = 56.sp,
+                fontWeight = FontWeight.Light,
+                textAlign = TextAlign.End,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
+
+        Column(
+            modifier = Modifier.fillMaxWidth(),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            buttonRows.forEach { row ->
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    row.forEach { label ->
+                        val isOperator = label in listOf("÷", "×", "-", "+", "=")
+                        val isTopAction = label in listOf("C", "±", "%")
+                        val bgColor = when {
+                            label == "=" -> Color(0xFFFF9F0A)
+                            isOperator -> Color(0xFF2B3548)
+                            isTopAction -> Color(0xFF1E2634)
+                            else -> Color(0xFF151A24)
+                        }
+                        val txtColor = when {
+                            label == "=" -> Color.White
+                            isOperator -> Color(0xFFFF9F0A)
+                            isTopAction -> Color(0xFF64D2FF)
+                            else -> Color.White
+                        }
+
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(68.dp)
+                                .clip(RoundedCornerShape(22.dp))
+                                .background(bgColor)
+                                .clickable { handleInput(label) },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = label,
+                                color = txtColor,
+                                fontSize = 26.sp,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
 private fun ChatTopBar(
     title: String,
     isGroup: Boolean,
@@ -548,6 +781,7 @@ private fun ChatTopBar(
     peerOnline: Boolean,
     typingUsers: List<String>,
     onBack: () -> Unit,
+    onActivateStealth: () -> Unit,
     onOpenGroupMembers: () -> Unit,
     onOpenSyncDialog: () -> Unit
 ) {
@@ -598,6 +832,14 @@ private fun ChatTopBar(
                 },
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
+            )
+        }
+
+        IconButton(onClick = onActivateStealth) {
+            Icon(
+                imageVector = Icons.Default.VisibilityOff,
+                contentDescription = "وضع التمويه الذكي (آلة حاسبة)",
+                tint = WarningAmber
             )
         }
 
