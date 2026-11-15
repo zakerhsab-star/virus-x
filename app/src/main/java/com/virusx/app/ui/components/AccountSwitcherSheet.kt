@@ -27,12 +27,11 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.virusx.app.ui.theme.*
+import com.virusx.app.data.repository.AuthRepository
 import dagger.hilt.EntryPoint
 import dagger.hilt.InstallIn
 import dagger.hilt.android.EntryPointAccessors
 import dagger.hilt.components.SingletonComponent
-import io.github.jan.supabase.gotrue.Auth
-import io.github.jan.supabase.gotrue.providers.builtin.Email
 import io.github.jan.supabase.postgrest.Postgrest
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -41,12 +40,14 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.jsonPrimitive
 
 @EntryPoint
 @InstallIn(SingletonComponent::class)
 interface AccountSwitchSupabaseEntryPoint {
-    fun auth(): Auth
+    fun authRepository(): AuthRepository
     fun postgrest(): Postgrest
 }
 
@@ -94,10 +95,10 @@ object AccountSwitcherStore {
 private suspend fun resolveLoginEmails(postgrest: Postgrest, rawIdentifier: String): List<String> {
     val clean = rawIdentifier.trim().removePrefix("@").lowercase()
     val candidates = LinkedHashSet<String>()
+    candidates.add(rawIdentifier.trim())
     if (clean.contains("@")) {
         candidates.add(clean)
     } else {
-        // 1. Check if profiles table has an email column or username match
         runCatching {
             val rows = postgrest.from("profiles")
                 .select { filter { eq("username", clean) } }
@@ -106,7 +107,6 @@ private suspend fun resolveLoginEmails(postgrest: Postgrest, rawIdentifier: Stri
                 candidates.add(it)
             }
         }
-        // 2. Standard VirusX synthetic email domains used when registering by username
         candidates.add("$clean@virusx.app")
         candidates.add("$clean@virusx.local")
         candidates.add("$clean@gmail.com")
@@ -133,10 +133,6 @@ fun AccountSwitcherCard(
     var switchError by remember { mutableStateOf<String?>(null) }
     var accounts by remember { mutableStateOf(AccountSwitcherStore.getAccounts(context)) }
 
-    val activeSessionEmail = remember(showDialog) {
-        runCatching { entryPoint.auth().currentUserOrNull()?.email }.getOrNull() ?: currentEmail
-    }
-
     var newEmail by remember { mutableStateOf("") }
     var newPassword by remember { mutableStateOf("") }
     var newLabel by remember { mutableStateOf("") }
@@ -148,36 +144,41 @@ fun AccountSwitcherCard(
         scope.launch {
             val result = withContext(Dispatchers.IO) {
                 runCatching {
-                    val auth = entryPoint.auth()
                     val postgrest = entryPoint.postgrest()
                     val emailsToTry = resolveLoginEmails(postgrest, slot.email)
 
-                    // Mark previous user offline before switching
                     runCatching {
-                        postgrest.rpc("ping_user_presence", kotlinx.serialization.json.buildJsonObject {
-                            put("_is_online", kotlinx.serialization.json.JsonPrimitive(false))
-                        })
+                        postgrest.rpc(
+                            "ping_user_presence",
+                            buildJsonObject { put("_is_online", JsonPrimitive(false)) }
+                        )
                     }
-                    runCatching { auth.signOut() }
+                    runCatching { entryPoint.authRepository().signOut() }
 
                     var lastErr: Throwable? = null
                     var loggedIn = false
                     for (candidateEmail in emailsToTry) {
                         val attempt = runCatching {
-                            auth.signInWith(Email) {
-                                email = candidateEmail
-                                password = slot.password
+                            val res = entryPoint.authRepository().signIn(candidateEmail, slot.password)
+                            if (res is Result<*>) {
+                                if (res.isSuccess) {
+                                    loggedIn = true
+                                    break
+                                } else {
+                                    lastErr = res.exceptionOrNull()
+                                }
+                            } else {
+                                loggedIn = true
+                                break
                             }
                         }
-                        if (attempt.isSuccess) {
-                            loggedIn = true
-                            break
-                        } else {
+                        if (loggedIn) break
+                        if (attempt.isFailure) {
                             lastErr = attempt.exceptionOrNull()
                         }
                     }
                     if (!loggedIn) {
-                        throw (lastErr ?: IllegalStateException("بيانات الدخول غير صحيحة"))
+                        throw (lastErr ?: IllegalStateException("تأكد من صحة البريد/اليوزر وكلمة المرور"))
                     }
                 }
             }
@@ -187,7 +188,6 @@ fun AccountSwitcherCard(
                 showDialog = false
                 Toast.makeText(context, "✅ تم التبديل إلى حساب (${slot.displayName}) بنجاح!", Toast.LENGTH_SHORT).show()
                 onSwitchAccount(slot.email, slot.password)
-                // Restart main activity cleanly so all ViewModels reload the new user's chats
                 val launch = context.packageManager.getLaunchIntentForPackage(context.packageName)?.apply {
                     addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK)
                 }
@@ -196,7 +196,7 @@ fun AccountSwitcherCard(
                     (context as? Activity)?.finish()
                 }
             }.onFailure { err ->
-                switchError = "فشل الدخول (${err.localizedMessage?.take(60) ?: "تأكد من الإيميل/اليوزر وكلمة المرور"})"
+                switchError = "فشل الدخول: ${err.localizedMessage?.take(70) ?: "تأكد من البيانات"}"
             }
         }
     }
@@ -285,15 +285,13 @@ fun AccountSwitcherCard(
 
                     if (accounts.isEmpty() && !showAddForm) {
                         Text(
-                            text = "أضف حساباتك هنا مرة واحدة، وبعدها اضغط على أي حساب ليتم تسجيل الدخول إليه مباشرةً دون إعادة كتابة البيانات.",
+                            text = "أضف حساباتك هنا مرة واحدة، وبعدها اضغط على أي حساب ليتم تسجيل الدخول إليه مباشرةً.",
                             color = TextSecondary,
                             fontSize = 13.sp
                         )
                     } else {
                         accounts.forEach { acc ->
-                            val isActive = !activeSessionEmail.isNullOrBlank() &&
-                                (acc.email.equals(activeSessionEmail, ignoreCase = true) ||
-                                    activeSessionEmail.startsWith("${acc.username.lowercase()}@"))
+                            val isActive = !currentEmail.isNullOrBlank() && acc.email.equals(currentEmail, ignoreCase = true)
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
@@ -328,23 +326,19 @@ fun AccountSwitcherCard(
                                 Column(modifier = Modifier.weight(1f)) {
                                     Text(acc.displayName, color = TextPrimary, fontWeight = FontWeight.Bold, fontSize = 13.sp)
                                     Text(
-                                        text = if (isActive) "${acc.email} • (الحساب الحالي)" else "${acc.email} • اضغط للدخول الفوري",
-                                        color = if (isActive) OnlineGreen else TextSecondary,
+                                        text = "${acc.email} • اضغط للدخول الفوري",
+                                        color = OnlineGreen,
                                         fontSize = 11.sp
                                     )
                                 }
-                                if (isActive) {
-                                    Icon(Icons.Default.CheckCircle, contentDescription = "نشط", tint = OnlineGreen)
-                                } else {
-                                    IconButton(
-                                        onClick = {
-                                            AccountSwitcherStore.removeAccount(context, acc.email)
-                                            accounts = AccountSwitcherStore.getAccounts(context)
-                                        },
-                                        modifier = Modifier.size(28.dp)
-                                    ) {
-                                        Icon(Icons.Default.Delete, contentDescription = "حذف", tint = DangerRed, modifier = Modifier.size(18.dp))
-                                    }
+                                IconButton(
+                                    onClick = {
+                                        AccountSwitcherStore.removeAccount(context, acc.email)
+                                        accounts = AccountSwitcherStore.getAccounts(context)
+                                    },
+                                    modifier = Modifier.size(28.dp)
+                                ) {
+                                    Icon(Icons.Default.Delete, contentDescription = "حذف", tint = DangerRed, modifier = Modifier.size(18.dp))
                                 }
                             }
                         }
