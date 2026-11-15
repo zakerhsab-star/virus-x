@@ -163,13 +163,11 @@ fun AccountSwitcherCard(
                             if (res is Result<*>) {
                                 if (res.isSuccess) {
                                     loggedIn = true
-                                    break
                                 } else {
                                     lastErr = res.exceptionOrNull()
                                 }
                             } else {
                                 loggedIn = true
-                                break
                             }
                         }
                         if (loggedIn) break

@@ -27,7 +27,6 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
-import androidx.compose.foundation.content.MediaType
 import androidx.compose.foundation.content.ReceiveContentListener
 import androidx.compose.foundation.content.TransferableContent
 import androidx.compose.foundation.content.consume
@@ -1586,9 +1585,6 @@ private fun CleanSingleLineComposer(
     // Official Compose Rich Content Receiver so Gboard / Samsung Keyboard stickers (.webp, .png, .gif) work directly!
     val keyboardStickerReceiver = remember {
         ReceiveContentListener { transferableContent: TransferableContent ->
-            if (!transferableContent.hasMediaType(MediaType.Image)) {
-                return@ReceiveContentListener transferableContent
-            }
             var stickerUri: Uri? = null
             val remaining = transferableContent.consume { item: ClipData.Item ->
                 val uri = item.uri
