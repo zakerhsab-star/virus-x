@@ -21,7 +21,8 @@ data class ProfileDto(
     @SerialName("dnd_auto_reply") val dndAutoReply: String? = null,
     @SerialName("is_online") val isOnline: Boolean = false,
     @SerialName("last_seen") val lastSeen: String? = null,
-    @SerialName("created_at") val createdAt: String? = null
+    @SerialName("created_at") val createdAt: String? = null,
+    @SerialName("custom_badge") val customBadge: String? = null
 )
 
 @Serializable

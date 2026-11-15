@@ -1,6 +1,9 @@
 package com.virusx.app.ui.components
 
+import android.app.Activity
 import android.content.Context
+import android.content.Intent
+import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -24,9 +27,28 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.virusx.app.ui.theme.*
+import dagger.hilt.EntryPoint
+import dagger.hilt.InstallIn
+import dagger.hilt.android.EntryPointAccessors
+import dagger.hilt.components.SingletonComponent
+import io.github.jan.supabase.gotrue.Auth
+import io.github.jan.supabase.gotrue.providers.builtin.Email
+import io.github.jan.supabase.postgrest.Postgrest
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.jsonPrimitive
+
+@EntryPoint
+@InstallIn(SingletonComponent::class)
+interface AccountSwitchSupabaseEntryPoint {
+    fun auth(): Auth
+    fun postgrest(): Postgrest
+}
 
 @Serializable
 data class SavedAccountSlot(
@@ -47,7 +69,10 @@ object AccountSwitcherStore {
     }
 
     fun saveAccount(context: Context, slot: SavedAccountSlot) {
-        val current = getAccounts(context).filterNot { it.email.equals(slot.email, ignoreCase = true) }.toMutableList()
+        val current = getAccounts(context).filterNot {
+            it.email.equals(slot.email, ignoreCase = true) ||
+                it.username.equals(slot.username, ignoreCase = true)
+        }.toMutableList()
         current.add(0, slot)
         val encoded = runCatching { Json.encodeToString(current) }.getOrNull() ?: return
         context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE)
@@ -66,6 +91,29 @@ object AccountSwitcherStore {
     }
 }
 
+private suspend fun resolveLoginEmails(postgrest: Postgrest, rawIdentifier: String): List<String> {
+    val clean = rawIdentifier.trim().removePrefix("@").lowercase()
+    val candidates = LinkedHashSet<String>()
+    if (clean.contains("@")) {
+        candidates.add(clean)
+    } else {
+        // 1. Check if profiles table has an email column or username match
+        runCatching {
+            val rows = postgrest.from("profiles")
+                .select { filter { eq("username", clean) } }
+                .decodeList<JsonObject>()
+            rows.firstOrNull()?.get("email")?.jsonPrimitive?.content?.takeIf { it.contains("@") }?.let {
+                candidates.add(it)
+            }
+        }
+        // 2. Standard VirusX synthetic email domains used when registering by username
+        candidates.add("$clean@virusx.app")
+        candidates.add("$clean@virusx.local")
+        candidates.add("$clean@gmail.com")
+    }
+    return candidates.toList()
+}
+
 @Composable
 fun AccountSwitcherCard(
     currentEmail: String? = null,
@@ -74,13 +122,84 @@ fun AccountSwitcherCard(
     onSwitchAccount: (String, String) -> Unit = { _, _ -> }
 ) {
     val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val entryPoint = remember(context) {
+        EntryPointAccessors.fromApplication(context.applicationContext, AccountSwitchSupabaseEntryPoint::class.java)
+    }
+
     var showDialog by remember { mutableStateOf(false) }
     var showAddForm by remember { mutableStateOf(false) }
+    var isSwitching by remember { mutableStateOf(false) }
+    var switchError by remember { mutableStateOf<String?>(null) }
     var accounts by remember { mutableStateOf(AccountSwitcherStore.getAccounts(context)) }
+
+    val activeSessionEmail = remember(showDialog) {
+        runCatching { entryPoint.auth().currentUserOrNull()?.email }.getOrNull() ?: currentEmail
+    }
 
     var newEmail by remember { mutableStateOf("") }
     var newPassword by remember { mutableStateOf("") }
     var newLabel by remember { mutableStateOf("") }
+
+    fun performRealAccountSwitch(slot: SavedAccountSlot) {
+        if (isSwitching) return
+        isSwitching = true
+        switchError = null
+        scope.launch {
+            val result = withContext(Dispatchers.IO) {
+                runCatching {
+                    val auth = entryPoint.auth()
+                    val postgrest = entryPoint.postgrest()
+                    val emailsToTry = resolveLoginEmails(postgrest, slot.email)
+
+                    // Mark previous user offline before switching
+                    runCatching {
+                        postgrest.rpc("ping_user_presence", kotlinx.serialization.json.buildJsonObject {
+                            put("_is_online", kotlinx.serialization.json.JsonPrimitive(false))
+                        })
+                    }
+                    runCatching { auth.signOut() }
+
+                    var lastErr: Throwable? = null
+                    var loggedIn = false
+                    for (candidateEmail in emailsToTry) {
+                        val attempt = runCatching {
+                            auth.signInWith(Email) {
+                                email = candidateEmail
+                                password = slot.password
+                            }
+                        }
+                        if (attempt.isSuccess) {
+                            loggedIn = true
+                            break
+                        } else {
+                            lastErr = attempt.exceptionOrNull()
+                        }
+                    }
+                    if (!loggedIn) {
+                        throw (lastErr ?: IllegalStateException("بيانات الدخول غير صحيحة"))
+                    }
+                }
+            }
+
+            isSwitching = false
+            result.onSuccess {
+                showDialog = false
+                Toast.makeText(context, "✅ تم التبديل إلى حساب (${slot.displayName}) بنجاح!", Toast.LENGTH_SHORT).show()
+                onSwitchAccount(slot.email, slot.password)
+                // Restart main activity cleanly so all ViewModels reload the new user's chats
+                val launch = context.packageManager.getLaunchIntentForPackage(context.packageName)?.apply {
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK)
+                }
+                if (launch != null) {
+                    context.startActivity(launch)
+                    (context as? Activity)?.finish()
+                }
+            }.onFailure { err ->
+                switchError = "فشل الدخول (${err.localizedMessage?.take(60) ?: "تأكد من الإيميل/اليوزر وكلمة المرور"})"
+            }
+        }
+    }
 
     Card(
         modifier = Modifier
@@ -89,6 +208,7 @@ fun AccountSwitcherCard(
             .border(1.dp, VirusXSecondaryWhisper.copy(alpha = 0.5f), RoundedCornerShape(16.dp))
             .clickable {
                 accounts = AccountSwitcherStore.getAccounts(context)
+                switchError = null
                 showDialog = true
             },
         shape = RoundedCornerShape(16.dp),
@@ -118,7 +238,7 @@ fun AccountSwitcherCard(
                     fontSize = 14.sp
                 )
                 Text(
-                    text = "انتقل بين حساباتك بضغطة واحدة (${accounts.size} محفوظ)",
+                    text = "انتقل بين حساباتك فوراً بضغطة واحدة (${accounts.size} محفوظ)",
                     color = TextSecondary,
                     fontSize = 12.sp
                 )
@@ -129,24 +249,51 @@ fun AccountSwitcherCard(
     if (showDialog) {
         AlertDialog(
             onDismissRequest = {
-                showDialog = false
-                showAddForm = false
+                if (!isSwitching) {
+                    showDialog = false
+                    showAddForm = false
+                }
             },
             containerColor = VirusXSurface,
             title = {
-                Text("🔄 تبديل الحساب السريع", color = TextPrimary, fontWeight = FontWeight.Bold)
+                Text("🔄 تبديل الحساب المباشر", color = TextPrimary, fontWeight = FontWeight.Bold)
             },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    if (isSwitching) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.Center
+                        ) {
+                            CircularProgressIndicator(modifier = Modifier.size(22.dp), color = OnlineGreen, strokeWidth = 2.dp)
+                            Spacer(modifier = Modifier.width(10.dp))
+                            Text("جاري تبديل الجلسة وفتح الحساب...", color = OnlineGreen, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                        }
+                    }
+
+                    switchError?.let { err ->
+                        Text(
+                            text = "⚠️ $err",
+                            color = DangerRed,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                    }
+
                     if (accounts.isEmpty() && !showAddForm) {
                         Text(
-                            text = "لا توجد حسابات إضافية محفوظة بعد. اضغط على (إضافة حساب للتبديل السريع) لحفظ حسابك الثاني والتبديل بينهما بضغطة واحدة.",
+                            text = "أضف حساباتك هنا مرة واحدة، وبعدها اضغط على أي حساب ليتم تسجيل الدخول إليه مباشرةً دون إعادة كتابة البيانات.",
                             color = TextSecondary,
                             fontSize = 13.sp
                         )
                     } else {
                         accounts.forEach { acc ->
-                            val isActive = !currentEmail.isNullOrBlank() && acc.email.equals(currentEmail, ignoreCase = true)
+                            val isActive = !activeSessionEmail.isNullOrBlank() &&
+                                (acc.email.equals(activeSessionEmail, ignoreCase = true) ||
+                                    activeSessionEmail.startsWith("${acc.username.lowercase()}@"))
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
@@ -157,14 +304,8 @@ fun AccountSwitcherCard(
                                         if (isActive) OnlineGreen else VirusXGlassBorder,
                                         RoundedCornerShape(12.dp)
                                     )
-                                    .clickable {
-                                        if (!isActive) {
-                                            showDialog = false
-                                            val clip = context.getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
-                                            clip.setPrimaryClip(android.content.ClipData.newPlainText("Password", acc.password))
-                                            android.widget.Toast.makeText(context, "تم نسخ باسورد (${acc.displayName}) تلقائياً وتجهيز التبديل!", android.widget.Toast.LENGTH_LONG).show()
-                                            onSwitchAccount(acc.email, acc.password)
-                                        }
+                                    .clickable(enabled = !isSwitching && !isActive) {
+                                        performRealAccountSwitch(acc)
                                     }
                                     .padding(10.dp),
                                 verticalAlignment = Alignment.CenterVertically
@@ -186,7 +327,11 @@ fun AccountSwitcherCard(
                                 Spacer(modifier = Modifier.width(10.dp))
                                 Column(modifier = Modifier.weight(1f)) {
                                     Text(acc.displayName, color = TextPrimary, fontWeight = FontWeight.Bold, fontSize = 13.sp)
-                                    Text(acc.email, color = TextSecondary, fontSize = 11.sp)
+                                    Text(
+                                        text = if (isActive) "${acc.email} • (الحساب الحالي)" else "${acc.email} • اضغط للدخول الفوري",
+                                        color = if (isActive) OnlineGreen else TextSecondary,
+                                        fontSize = 11.sp
+                                    )
                                 }
                                 if (isActive) {
                                     Icon(Icons.Default.CheckCircle, contentDescription = "نشط", tint = OnlineGreen)
@@ -209,14 +354,14 @@ fun AccountSwitcherCard(
                         OutlinedTextField(
                             value = newLabel,
                             onValueChange = { newLabel = it },
-                            label = { Text("اسم الحساب (مثال: حسابي الثاني)") },
+                            label = { Text("اسم تمييز الحساب (مثال: حسابي الثاني)") },
                             singleLine = true,
                             modifier = Modifier.fillMaxWidth()
                         )
                         OutlinedTextField(
                             value = newEmail,
                             onValueChange = { newEmail = it },
-                            label = { Text("البريد الإلكتروني أو اسم المستخدم") },
+                            label = { Text("البريد الإلكتروني أو الـ Username") },
                             singleLine = true,
                             modifier = Modifier.fillMaxWidth()
                         )
@@ -228,27 +373,53 @@ fun AccountSwitcherCard(
                             singleLine = true,
                             modifier = Modifier.fillMaxWidth()
                         )
-                        Button(
-                            onClick = {
-                                if (newEmail.isNotBlank() && newPassword.isNotBlank()) {
-                                    val slot = SavedAccountSlot(
-                                        email = newEmail.trim(),
-                                        password = newPassword,
-                                        displayName = newLabel.ifBlank { newEmail.substringBefore("@") },
-                                        username = newEmail.substringBefore("@")
-                                    )
-                                    AccountSwitcherStore.saveAccount(context, slot)
-                                    accounts = AccountSwitcherStore.getAccounts(context)
-                                    newEmail = ""
-                                    newPassword = ""
-                                    newLabel = ""
-                                    showAddForm = false
-                                }
-                            },
-                            colors = ButtonDefaults.buttonColors(containerColor = OnlineGreen),
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Text("حفظ الحساب في القائمة", color = Color.Black, fontWeight = FontWeight.Bold)
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Button(
+                                onClick = {
+                                    if (newEmail.isNotBlank() && newPassword.isNotBlank()) {
+                                        val cleanId = newEmail.trim()
+                                        val slot = SavedAccountSlot(
+                                            email = cleanId,
+                                            password = newPassword,
+                                            displayName = newLabel.ifBlank { cleanId.substringBefore("@") },
+                                            username = cleanId.substringBefore("@").removePrefix("@")
+                                        )
+                                        AccountSwitcherStore.saveAccount(context, slot)
+                                        accounts = AccountSwitcherStore.getAccounts(context)
+                                        newEmail = ""
+                                        newPassword = ""
+                                        newLabel = ""
+                                        showAddForm = false
+                                        performRealAccountSwitch(slot)
+                                    }
+                                },
+                                colors = ButtonDefaults.buttonColors(containerColor = OnlineGreen),
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Text("حفظ ودخول الآن", color = Color.Black, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                            }
+                            OutlinedButton(
+                                onClick = {
+                                    if (newEmail.isNotBlank() && newPassword.isNotBlank()) {
+                                        val cleanId = newEmail.trim()
+                                        val slot = SavedAccountSlot(
+                                            email = cleanId,
+                                            password = newPassword,
+                                            displayName = newLabel.ifBlank { cleanId.substringBefore("@") },
+                                            username = cleanId.substringBefore("@").removePrefix("@")
+                                        )
+                                        AccountSwitcherStore.saveAccount(context, slot)
+                                        accounts = AccountSwitcherStore.getAccounts(context)
+                                        newEmail = ""
+                                        newPassword = ""
+                                        newLabel = ""
+                                        showAddForm = false
+                                    }
+                                },
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Text("حفظ فقط", color = TextPrimary, fontSize = 12.sp)
+                            }
                         }
                     } else {
                         OutlinedButton(
@@ -263,10 +434,13 @@ fun AccountSwitcherCard(
                 }
             },
             confirmButton = {
-                TextButton(onClick = {
-                    showDialog = false
-                    showAddForm = false
-                }) {
+                TextButton(
+                    onClick = {
+                        showDialog = false
+                        showAddForm = false
+                    },
+                    enabled = !isSwitching
+                ) {
                     Text("إغلاق", color = TextSecondary)
                 }
             }
