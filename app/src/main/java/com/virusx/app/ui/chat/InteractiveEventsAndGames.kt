@@ -699,7 +699,7 @@ fun InChatWordBombCard(
                                 localError = null
                                 val nextPair = letterPairs.random()
                                 val nextDeadline = System.currentTimeMillis() / 1000L + 16L
-                                val nextUsed = (usedSet + candidate).takeLast(20).joinToString(",")
+                                val nextUsed = (usedSet + candidate).toList().takeLast(20).joinToString(",")
                                 VirusXEffectsAndNotifications.playSoundEffect("VICTORY")
                                 onUpdateState("[GAME_BOMB]|$nextPair|$currentUserName|$nextDeadline|${streak + 1}|ACTIVE|$nextUsed")
                             }
