@@ -1028,64 +1028,243 @@ fun ChatScreen(
         )
     }
 
-    // In-Chat Mini Duel Game Picker Dialog
+    // In-Chat Pro Interactive Events & Games Hub Dialog
     if (showGamePickerDialog) {
+        var customRouletteTitle by remember { mutableStateOf("قرعة الجروب السريعة") }
+        var imposterCustomWord by remember { mutableStateOf("") }
+        var selectedAccused by remember { mutableStateOf(state.members.firstOrNull()?.displayName ?: state.currentUserName) }
+
+        val imposterPresets = remember {
+            listOf(
+                "أكلات" to listOf("كشري", "شاورما", "بيتزا", "ملوخية", "محشي", "فلافل", "برجر"),
+                "أفلام وألعاب" to listOf("باتمان", "سبايدرمان", "جاتا", "فيفا", "ببجي", "ماينكرافت"),
+                "أماكن" to listOf("الأهرامات", "المطار", "الجامعة", "المستشفى", "السينما", "الملعب")
+            )
+        }
+
         AlertDialog(
             onDismissRequest = { showGamePickerDialog = false },
             containerColor = VirusXSurface,
-            title = { Text("🎮 إرسال تحدي مباشر داخل الشات", color = TextPrimary, fontWeight = FontWeight.Bold) },
+            title = {
+                Text("🎮 مركز الفعاليات والألعاب الجماعية الحية", color = TextPrimary, fontWeight = FontWeight.ExtraBold, fontSize = 16.sp)
+            },
             text = {
-                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(max = 470.dp)
+                        .verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    // 1. Dominoes Table
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
                             .clip(RoundedCornerShape(14.dp))
-                            .background(VirusXSurfaceElevated)
-                            .border(1.dp, VirusXSecondaryWhisper, RoundedCornerShape(14.dp))
+                            .background(Color(0xFF0D2E22))
+                            .border(1.dp, Color(0xFFD4AF37), RoundedCornerShape(14.dp))
                             .clickable {
+                                showGamePickerDialog = false
+                                val hostId = state.currentUserId ?: "host"
+                                val initStr = buildInitialDominoGameString(hostId, state.currentUserName)
+                                viewModel.onInputTextChange(initStr)
+                                viewModel.sendTextMessage()
+                            }
+                            .padding(12.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text("🁣", fontSize = 28.sp)
+                        Spacer(modifier = Modifier.width(10.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text("طاولة الدومينو الاحترافية (Dominoes)", color = Color(0xFFFFD54F), fontWeight = FontWeight.ExtraBold, fontSize = 14.sp)
+                            Text("توزيع 7 قطع سرية لكل لاعب وسحب من السوق وطاولة حية", color = TextSecondary, fontSize = 11.sp)
+                        }
+                    }
+
+                    // 2. The Imposter (Spyfall)
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(14.dp))
+                            .background(Color(0xFF1F1124))
+                            .border(1.dp, Color(0xFFFF6B81), RoundedCornerShape(14.dp))
+                            .padding(12.dp),
+                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text("🕵️‍♂️", fontSize = 24.sp)
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text("لعبة الأمبوستر (الجاسوس السري)", color = Color(0xFFFF6B81), fontWeight = FontWeight.ExtraBold, fontSize = 14.sp)
+                                Text("توزيع كلمة سرية للجميع ما عدا الأمبوستر + تصويت حي", color = TextSecondary, fontSize = 11.sp)
+                            }
+                        }
+                        OutlinedTextField(
+                            value = imposterCustomWord,
+                            onValueChange = { imposterCustomWord = it },
+                            placeholder = { Text("اكتب كلمة سرية خاصة (أو اتركها عشوائية)...", fontSize = 11.sp) },
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.fillMaxWidth()) {
+                            imposterPresets.forEach { (cat, words) ->
+                                Button(
+                                    onClick = {
+                                        showGamePickerDialog = false
+                                        val chosenWord = imposterCustomWord.trim().ifBlank { words.random() }
+                                        val uid = state.currentUserId ?: "u1"
+                                        val uname = state.currentUserName.replace(",", "").replace(":", "").ifBlank { "مؤسس" }
+                                        viewModel.onInputTextChange("[GAME_IMPOSTER]|$cat|$chosenWord||$uid:$uname|LOBBY|")
+                                        viewModel.sendTextMessage()
+                                    },
+                                    colors = ButtonDefaults.buttonColors(containerColor = VirusXPrimary),
+                                    modifier = Modifier.weight(1f),
+                                    contentPadding = PaddingValues(horizontal = 4.dp, vertical = 6.dp)
+                                ) {
+                                    Text("بدء ($cat)", fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                                }
+                            }
+                        }
+                    }
+
+                    // 3. Live Roulette Wheel
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(14.dp))
+                            .background(VirusXSurfaceElevated)
+                            .border(1.dp, WarningAmber, RoundedCornerShape(14.dp))
+                            .padding(12.dp),
+                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text("🎡", fontSize = 24.sp)
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text("عجلة الروليت والقرعة الفيزيائية", color = WarningAmber, fontWeight = FontWeight.ExtraBold, fontSize = 14.sp)
+                                Text("عجلة دوارة بفيزياء تبطيء حقيقية لاختيار فائز عشوائي", color = TextSecondary, fontSize = 11.sp)
+                            }
+                        }
+                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+                            OutlinedTextField(
+                                value = customRouletteTitle,
+                                onValueChange = { customRouletteTitle = it },
+                                label = { Text("عنوان القرعة", fontSize = 11.sp) },
+                                singleLine = true,
+                                modifier = Modifier.weight(1f)
+                            )
+                            Button(
+                                onClick = {
+                                    showGamePickerDialog = false
+                                    val uid = state.currentUserId ?: "u1"
+                                    val uname = state.currentUserName.replace(",", "").replace(":", "").ifBlank { "عضو" }
+                                    val cleanTitle = customRouletteTitle.replace("|", " ").ifBlank { "قرعة الحظ" }
+                                    viewModel.onInputTextChange("[EVENT_ROULETTE]|$cleanTitle|$uid:$uname|LOBBY|0|")
+                                    viewModel.sendTextMessage()
+                                },
+                                colors = ButtonDefaults.buttonColors(containerColor = WarningAmber)
+                            ) {
+                                Text("إنشاء 🎡", color = Color.Black, fontWeight = FontWeight.ExtraBold, fontSize = 11.sp)
+                            }
+                        }
+                    }
+
+                    // 4. Word Bomb
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(14.dp))
+                            .background(Color(0xFF28120D))
+                            .border(1.dp, DangerRed, RoundedCornerShape(14.dp))
+                            .clickable {
+                                showGamePickerDialog = false
+                                val deadline = System.currentTimeMillis() / 1000L + 18L
+                                val host = state.currentUserName.ifBlank { "اللاعب 1" }
+                                viewModel.onInputTextChange("[GAME_BOMB]|م ر|$host|$deadline|0|ACTIVE|")
+                                viewModel.sendTextMessage()
+                            }
+                            .padding(12.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text("💣", fontSize = 26.sp)
+                        Spacer(modifier = Modifier.width(10.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text("تحدي القنبلة الموقوتة بالكلمات (Word Bomb)", color = WarningAmber, fontWeight = FontWeight.ExtraBold, fontSize = 14.sp)
+                            Text("كون كلمة بالحرفين المطلوبين قبل انفجار العداد التنازلي!", color = TextSecondary, fontSize = 11.sp)
+                        }
+                    }
+
+                    // 5. Hot Seat / Courtroom
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(14.dp))
+                            .background(Color(0xFF1A1528))
+                            .border(1.dp, Color(0xFFA29BFE), RoundedCornerShape(14.dp))
+                            .padding(12.dp),
+                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text("⚖️", fontSize = 24.sp)
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text("محكمة الجروب وكرسي الاعتراف", color = Color(0xFFA29BFE), fontWeight = FontWeight.ExtraBold, fontSize = 14.sp)
+                                Text("اختر عضواً لوضعه في قفص الاستجواب المباشر أمام الجروب", color = TextSecondary, fontSize = 11.sp)
+                            }
+                        }
+                        LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            items(state.members) { m ->
+                                FilterChip(
+                                    selected = selectedAccused == m.displayName,
+                                    onClick = { selectedAccused = m.displayName },
+                                    label = { Text(m.displayName, fontSize = 11.sp) }
+                                )
+                            }
+                        }
+                        Button(
+                            onClick = {
+                                showGamePickerDialog = false
+                                val accused = selectedAccused.replace("|", " ").ifBlank { "عضو" }
+                                viewModel.onInputTextChange("[EVENT_HOTSEAT]|$accused||||WAITING_Q")
+                                viewModel.sendTextMessage()
+                            },
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF6C5CE7)),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text("⚖️ استدعاء ($selectedAccused) لكرسي الاعتراف", fontWeight = FontWeight.Bold, fontSize = 11.sp)
+                        }
+                    }
+
+                    // 6 & 7. Classic Quick X/O & RPS Duels
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                        OutlinedButton(
+                            onClick = {
                                 showGamePickerDialog = false
                                 val host = state.currentUserName.ifBlank { "اللاعب 1" }
                                 viewModel.onInputTextChange("[GAME_XO]|---------|X|$host|ACTIVE")
                                 viewModel.sendTextMessage()
-                            }
-                            .padding(14.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text("❌⭕", fontSize = 26.sp)
-                        Spacer(modifier = Modifier.width(12.dp))
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text("تحدي إكس أو المباشر (Live X/O)", color = TextPrimary, fontWeight = FontWeight.Bold, fontSize = 14.sp)
-                            Text("لوحة تفاعلية حية داخل الرسالة يلعب فيها الطرفان مباشرةً", color = TextSecondary, fontSize = 11.sp)
+                            },
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Text("❌⭕ إكس أو", color = TextPrimary, fontSize = 11.sp, fontWeight = FontWeight.Bold)
                         }
-                    }
-
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(14.dp))
-                            .background(VirusXSurfaceElevated)
-                            .border(1.dp, OnlineGreen, RoundedCornerShape(14.dp))
-                            .clickable {
+                        OutlinedButton(
+                            onClick = {
                                 showGamePickerDialog = false
                                 val host = state.currentUserName.ifBlank { "اللاعب 1" }
                                 viewModel.onInputTextChange("[GAME_RPS]|$host|?|?|?|WAITING")
                                 viewModel.sendTextMessage()
-                            }
-                            .padding(14.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text("🪨📄✂️", fontSize = 24.sp)
-                        Spacer(modifier = Modifier.width(12.dp))
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text("تحدي حجر - ورقة - مقص", color = TextPrimary, fontWeight = FontWeight.Bold, fontSize = 14.sp)
-                            Text("مواجهة سريعة مخفية الاختيار حتى يختار الطرفان!", color = TextSecondary, fontSize = 11.sp)
+                            },
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Text("🪨📄✂️ حجر ورقة", color = TextPrimary, fontSize = 11.sp, fontWeight = FontWeight.Bold)
                         }
                     }
                 }
             },
             confirmButton = {
                 TextButton(onClick = { showGamePickerDialog = false }) {
-                    Text("إلغاء", color = TextSecondary)
+                    Text("إغلاق", color = TextSecondary)
                 }
             }
         )
@@ -2011,7 +2190,7 @@ private fun MessageBubbleItem(
 
             Column(
                 modifier = Modifier
-                    .widthIn(min = 96.dp, max = 278.dp)
+                    .widthIn(min = 96.dp, max = 315.dp)
                     .clip(bubbleShape)
                     .then(
                         when {
@@ -2154,6 +2333,44 @@ private fun MessageBubbleItem(
                     rawContent.startsWith("[GAME_XO]|") -> {
                         InChatTicTacToeCard(
                             rawState = rawContent,
+                            currentUserName = currentUserName.ifBlank { "لاعب" },
+                            onUpdateState = onUpdateGameMessage
+                        )
+                    }
+                    rawContent.startsWith("[EVENT_ROULETTE]|") -> {
+                        InChatRouletteWheelCard(
+                            rawState = rawContent,
+                            currentUserId = currentUserId ?: "u",
+                            currentUserName = currentUserName.ifBlank { "لاعب" },
+                            onUpdateState = onUpdateGameMessage
+                        )
+                    }
+                    rawContent.startsWith("[GAME_IMPOSTER]|") -> {
+                        InChatImposterGameCard(
+                            rawState = rawContent,
+                            currentUserId = currentUserId ?: "u",
+                            currentUserName = currentUserName.ifBlank { "لاعب" },
+                            onUpdateState = onUpdateGameMessage
+                        )
+                    }
+                    rawContent.startsWith("[GAME_BOMB]|") -> {
+                        InChatWordBombCard(
+                            rawState = rawContent,
+                            currentUserName = currentUserName.ifBlank { "لاعب" },
+                            onUpdateState = onUpdateGameMessage
+                        )
+                    }
+                    rawContent.startsWith("[EVENT_HOTSEAT]|") -> {
+                        InChatHotSeatCourtCard(
+                            rawState = rawContent,
+                            currentUserName = currentUserName.ifBlank { "لاعب" },
+                            onUpdateState = onUpdateGameMessage
+                        )
+                    }
+                    rawContent.startsWith("[GAME_DOMINO]|") -> {
+                        InChatDominoTableCard(
+                            rawState = rawContent,
+                            currentUserId = currentUserId ?: "u",
                             currentUserName = currentUserName.ifBlank { "لاعب" },
                             onUpdateState = onUpdateGameMessage
                         )
