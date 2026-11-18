@@ -1,5 +1,9 @@
 package com.virusx.app.ui.admin
 
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.foundation.layout.*
+
 import android.widget.Toast
 import androidx.compose.ui.platform.LocalContext
 import com.virusx.app.ui.components.AccountSwitchSupabaseEntryPoint
@@ -670,6 +674,9 @@ private fun AdminBroadcastAndSecurityTab(
 
 
 @Composable
+
+
+@Composable
 fun SuperAdminResetPasswordWidget(
     targetUserId: String,
     targetDisplayName: String,
@@ -766,7 +773,7 @@ fun SuperAdminResetPasswordWidget(
                                     Toast.LENGTH_LONG
                                 ).show()
                             }.onFailure { e ->
-                                errorMsg = "تأكد من تشغيل كود SQL دالة super_admin_reset_password في Supabase (${e.localizedMessage?.take(45)})"
+                                errorMsg = "تأكد من تشغيل كود SQL دالة super_admin_reset_password (${e.localizedMessage?.take(40)})"
                             }
                         }
                     },
