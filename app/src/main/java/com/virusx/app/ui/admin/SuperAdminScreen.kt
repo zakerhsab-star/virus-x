@@ -677,6 +677,9 @@ private fun AdminBroadcastAndSecurityTab(
 
 
 @Composable
+
+
+@Composable
 fun SuperAdminResetPasswordWidget(
     targetUserId: String,
     targetDisplayName: String,
