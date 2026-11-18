@@ -140,8 +140,18 @@ fun ChatScreen(
         contract = ActivityResultContracts.RequestPermission()
     ) { }
 
+    LaunchedEffect(state.currentUserId) {
+        if (!state.currentUserId.isNullOrBlank()) {
+            context.getSharedPreferences("virusx_current_user", Context.MODE_PRIVATE)
+                .edit()
+                .putString("uid", state.currentUserId)
+                .apply()
+        }
+    }
+
     LaunchedEffect(Unit) {
         VirusXEffectsAndNotifications.ensureChannels(context)
+        VirusXEffectsAndNotifications.startBackgroundMonitorService(context)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             if (ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
                 notifPermLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
@@ -329,15 +339,23 @@ fun ChatScreen(
             // 2. Check for Super Admin Force Ping Siren Alert
             if (raw.startsWith("[FORCE_PING]")) {
                 val alertBody = raw.removePrefix("[FORCE_PING]").trim().ifBlank { "🚨 استدعاء طوارئ عاجل من المشرف العام!" }
-                VirusXEffectsAndNotifications.triggerForcePingSirenAndVibration(context)
-                emergencyAlertPopupText = alertBody
-                if (isFromOther) {
-                    VirusXEffectsAndNotifications.showIncomingNotification(
+                if (!isScreenResumed || VirusXEffectsAndNotifications.canDrawOverlays(context)) {
+                    VirusXEffectsAndNotifications.showGlobalEmergencyAlert(
                         context = context,
-                        title = "🚨 تنبيه طوارئ عاجل (${state.chatTitle})",
-                        body = alertBody,
-                        isEmergency = true
+                        title = "🚨 استدعاء طوارئ من ${state.chatTitle}",
+                        body = alertBody
                     )
+                } else {
+                    VirusXEffectsAndNotifications.triggerForcePingSirenAndVibration(context)
+                    emergencyAlertPopupText = alertBody
+                    if (isFromOther) {
+                        VirusXEffectsAndNotifications.showIncomingNotification(
+                            context = context,
+                            title = "🚨 تنبيه طوارئ عاجل (${state.chatTitle})",
+                            body = alertBody,
+                            isEmergency = true
+                        )
+                    }
                 }
             }
             // 3. Check for Interactive Soundboard Effect
@@ -953,10 +971,14 @@ fun ChatScreen(
                     PlusMenuTile(
                         icon = "🚨",
                         title = "نبضة طوارئ",
-                        subtitle = "اهتزاز وإنذار عن بُعد",
+                        subtitle = if (VirusXEffectsAndNotifications.canDrawOverlays(context)) "تظهر فوق التطبيقات ✅" else "تفعيل الظهور بالخارج + إرسال",
                         modifier = Modifier.weight(1f),
                         onClick = {
                             showPlusMenuSheet = false
+                            if (!VirusXEffectsAndNotifications.canDrawOverlays(context)) {
+                                Toast.makeText(context, "فعّل خيار (الظهور فوق التطبيقات الأخرى) لتظهر نافذة الطوارئ فوق الواتساب والألعاب!", Toast.LENGTH_LONG).show()
+                                VirusXEffectsAndNotifications.requestOverlayPermission(context)
+                            }
                             viewModel.onInputTextChange("[FORCE_PING] 🚨 استدعاء عاجل من ${state.currentUserName} — افتح المحادثة فوراً!")
                             viewModel.sendTextMessage()
                         }
@@ -2540,8 +2562,13 @@ private fun InChatTicTacToeCard(
     currentUserName: String,
     onUpdateState: (String) -> Unit
 ) {
-    // Format: [GAME_XO]|board9chars|nextTurn(X/O)|lastPlayerName|status
-    val parts = rawState.split("|")
+    var isLocalBotMode by remember { mutableStateOf(false) }
+    var botLevel by remember { mutableStateOf("MEDIUM") }
+    var showBotSelector by remember { mutableStateOf(false) }
+    var localState by remember(rawState) { mutableStateOf(rawState) }
+
+    val activeState = if (isLocalBotMode) localState else rawState
+    val parts = activeState.split("|")
     val board = (parts.getOrNull(1) ?: "---------").padEnd(9, '-')
     val turn = parts.getOrNull(2) ?: "X"
     val lastActor = parts.getOrNull(3) ?: ""
@@ -2561,6 +2588,56 @@ private fun InChatTicTacToeCard(
         return null
     }
 
+    fun pickBestBotMove(b: String, level: String): Int {
+        val empty = b.indices.filter { b[it] == '-' }
+        if (empty.isEmpty()) return -1
+        if (level == "EASY") return empty.random()
+
+        // Check immediate win for O
+        for (idx in empty) {
+            val test = StringBuilder(b).also { it.setCharAt(idx, 'O') }.toString()
+            if (checkWinner(test) == "O") return idx
+        }
+        // Check immediate block against X
+        for (idx in empty) {
+            val test = StringBuilder(b).also { it.setCharAt(idx, 'X') }.toString()
+            if (checkWinner(test) == "X") return idx
+        }
+        if (level == "MEDIUM") return empty.random()
+
+        // PRO: Center -> Corners -> Edges tactical priority
+        if (4 in empty) return 4
+        val corners = listOf(0, 2, 6, 8).filter { it in empty }
+        if (corners.isNotEmpty()) return corners.random()
+        return empty.random()
+    }
+
+    LaunchedEffect(activeState, isLocalBotMode) {
+        if (isLocalBotMode && status == "ACTIVE" && turn == "O") {
+            delay(550L)
+            val botIdx = pickBestBotMove(board, botLevel)
+            if (botIdx >= 0) {
+                val nextBoard = StringBuilder(board).also { it.setCharAt(botIdx, 'O') }.toString()
+                val win = checkWinner(nextBoard)
+                val botLabel = when (botLevel) {
+                    "EASY" -> "🤖 البوت (سهل)"
+                    "MEDIUM" -> "🤖 البوت (متوسط)"
+                    else -> "🤖 البوت (حريف)"
+                }
+                val nextStatus = when (win) {
+                    "O" -> {
+                        VirusXEffectsAndNotifications.playSoundEffect("GAMEOVER")
+                        "WIN:$botLabel"
+                    }
+                    "DRAW" -> "DRAW"
+                    else -> "ACTIVE"
+                }
+                localState = "[GAME_XO]|$nextBoard|X|$botLabel|$nextStatus"
+                if (nextStatus != "ACTIVE") onUpdateState(localState)
+            }
+        }
+    }
+
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -2570,10 +2647,58 @@ private fun InChatTicTacToeCard(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(6.dp)
     ) {
-        Text("🎮 تحدي X/O المباشر", color = WarningAmber, fontWeight = FontWeight.ExtraBold, fontSize = 13.sp)
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text("🎮 تحدي X/O المباشر", color = WarningAmber, fontWeight = FontWeight.ExtraBold, fontSize = 13.sp)
+            if (!isLocalBotMode && status == "ACTIVE" && !showBotSelector) {
+                Text(
+                    text = "🤖 ضد البوت ▼",
+                    color = OnlineGreen,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 10.sp,
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(VirusXSurfaceElevated)
+                        .border(1.dp, OnlineGreen, RoundedCornerShape(8.dp))
+                        .clickable { showBotSelector = true }
+                        .padding(horizontal = 7.dp, vertical = 3.dp)
+                )
+            }
+        }
+
+        if (showBotSelector && !isLocalBotMode) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                listOf("EASY" to "🟢 سهل", "MEDIUM" to "🟡 متوسط", "PRO" to "🔴 حريف").forEach { (k, label) ->
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(VirusXSurfaceElevated)
+                            .border(1.dp, WarningAmber, RoundedCornerShape(8.dp))
+                            .clickable {
+                                botLevel = k
+                                isLocalBotMode = true
+                                showBotSelector = false
+                            }
+                            .padding(vertical = 5.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(label, color = TextPrimary, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                    }
+                }
+            }
+        }
+
         val statusText = when {
             status.startsWith("WIN:") -> "🏆 الفائز: ${status.removePrefix("WIN:")}!"
             status == "DRAW" -> "🤝 تعادل بين الطرفين!"
+            isLocalBotMode && turn == "O" -> "🤖 البوت يفكر..."
             else -> "الدور الآن على: $turn (آخر حركة: $lastActor)"
         }
         Text(statusText, color = TextPrimary, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
@@ -2589,7 +2714,7 @@ private fun InChatTicTacToeCard(
                             .clip(RoundedCornerShape(10.dp))
                             .background(VirusXSurfaceElevated)
                             .border(1.dp, VirusXGlassBorder, RoundedCornerShape(10.dp))
-                            .clickable(enabled = status == "ACTIVE" && cell == '-') {
+                            .clickable(enabled = status == "ACTIVE" && cell == '-' && (!isLocalBotMode || turn == "X")) {
                                 val nextBoard = StringBuilder(board).also { it.setCharAt(idx, turn.first()) }.toString()
                                 val win = checkWinner(nextBoard)
                                 val nextStatus = when (win) {
@@ -2601,7 +2726,11 @@ private fun InChatTicTacToeCard(
                                     else -> "ACTIVE"
                                 }
                                 val nextTurn = if (turn == "X") "O" else "X"
-                                onUpdateState("[GAME_XO]|$nextBoard|$nextTurn|$currentUserName|$nextStatus")
+                                val nextStr = "[GAME_XO]|$nextBoard|$nextTurn|$currentUserName|$nextStatus"
+                                localState = nextStr
+                                if (!isLocalBotMode || nextStatus != "ACTIVE") {
+                                    onUpdateState(nextStr)
+                                }
                             },
                         contentAlignment = Alignment.Center
                     ) {

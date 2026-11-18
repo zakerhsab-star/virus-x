@@ -17,6 +17,11 @@
 
         <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
 
+        <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
+    <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+
     <application
         android:name=".VirusXApplication"
         android:allowBackup="false"
@@ -49,5 +54,20 @@
                 android:resource="@xml/file_paths" />
         </provider>
 
+    
+        <activity
+            android:name="com.virusx.app.util.EmergencyAlertActivity"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:launchMode="singleInstance"
+            android:showOnLockScreen="true"
+            android:turnScreenOn="true"
+            android:theme="@android:style/Theme.Translucent.NoTitleBar" />
+
+        <service
+            android:name="com.virusx.app.util.VirusXEmergencyMonitorService"
+            android:enabled="true"
+            android:exported="false"
+            android:foregroundServiceType="dataSync" />
     </application>
 </manifest>

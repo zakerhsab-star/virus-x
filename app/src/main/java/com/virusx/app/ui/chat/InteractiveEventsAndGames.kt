@@ -6,7 +6,6 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.CubicBezierEasing
 import androidx.compose.animation.core.FastOutSlowInEasing
-import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
@@ -24,6 +23,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
@@ -38,6 +38,7 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.input.pointer.pointerInput
@@ -46,6 +47,8 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import com.virusx.app.ui.theme.*
 import com.virusx.app.util.VirusXEffectsAndNotifications
 import kotlin.math.cos
@@ -55,7 +58,6 @@ import kotlinx.coroutines.delay
 
 // ============================================================================
 // 1. LIVE ROULETTE WHEEL ENGINE (Canvas 2D + CubicBezier Physics Spin)
-// Format: [EVENT_ROULETTE]|title|p1:name1,p2:name2|status(LOBBY/SPIN)|targetAngle|winnerName
 // ============================================================================
 
 @Composable
@@ -138,7 +140,6 @@ fun InChatRouletteWheelCard(
             )
         }
 
-        // Animated 2D Roulette Wheel Canvas
         Box(
             modifier = Modifier.size(196.dp),
             contentAlignment = Alignment.TopCenter
@@ -155,7 +156,6 @@ fun InChatRouletteWheelCard(
                 val sweep = 360f / count
                 val currentRot = spinAnim.value
 
-                // Outer golden rim
                 drawCircle(
                     color = Color(0xFFFFD54F),
                     radius = radius,
@@ -173,7 +173,6 @@ fun InChatRouletteWheelCard(
                         topLeft = Offset(center.x - radius + 4f, center.y - radius + 4f),
                         size = Size((radius - 4f) * 2f, (radius - 4f) * 2f)
                     )
-                    // Draw label inside slice
                     val label = participants.getOrNull(i)?.second?.take(8) ?: "انضم الآن"
                     val midAngleRad = Math.toRadians((startAngle + sweep / 2f).toDouble())
                     val textR = radius * 0.60f
@@ -192,12 +191,10 @@ fun InChatRouletteWheelCard(
                     }
                 }
 
-                // Center Hub
                 drawCircle(color = Color(0xFF0A0D12), radius = 24f, center = center)
                 drawCircle(color = Color(0xFFFFD54F), radius = 24f, center = center, style = Stroke(width = 4f))
             }
 
-            // Top Pointer Needle
             Canvas(modifier = Modifier.size(22.dp)) {
                 val path = Path().apply {
                     moveTo(size.width / 2f, size.height)
@@ -262,7 +259,6 @@ fun InChatRouletteWheelCard(
                         val winner = participants[winIdx].second
                         val count = participants.size
                         val sweep = 360f / count
-                        // Pointer is at top (270 deg in standard canvas coords)
                         val targetSliceCenter = winIdx * sweep + sweep / 2f
                         val extraSpins = 360f * 5f
                         val finalDeg = extraSpins + ((270f - targetSliceCenter + 360f) % 360f)
@@ -287,7 +283,6 @@ fun InChatRouletteWheelCard(
 
 // ============================================================================
 // 2. THE IMPOSTER / SPYFALL GAME (Hold-to-Reveal Secret Role + Live Voting)
-// Format: [GAME_IMPOSTER]|category|secretWord|imposterUid|p1:name1,p2:name2|status(LOBBY/PLAYING/VOTED)|votes(voterId>targetId)
 // ============================================================================
 
 @Composable
@@ -535,7 +530,6 @@ fun InChatImposterGameCard(
 
 // ============================================================================
 // 3. TIME BOMB WORD CHALLENGE (💣 القنبلة الموقوتة)
-// Format: [GAME_BOMB]|letters|holderName|deadlineEpochSec|scoreCount|status(ACTIVE/BOOM)|usedWordsCsv
 // ============================================================================
 
 @Composable
@@ -716,7 +710,6 @@ fun InChatWordBombCard(
 
 // ============================================================================
 // 4. GROUP HOT SEAT / COURTROOM (⚖️ كرسي الاعتراف / محكمة الجروب)
-// Format: [EVENT_HOTSEAT]|accusedName|currentQuestion|askedBy|answerText|status(WAITING_Q/WAITING_A/ESCAPED)
 // ============================================================================
 
 @Composable
@@ -858,7 +851,7 @@ fun InChatHotSeatCourtCard(
 }
 
 // ============================================================================
-// 5. PRO DOMINOES TABLE (🁣 طاولة الدومينو الاحترافية بـ Canvas)
+// 5. PRO DOMINOES TABLE 2.0 (Real Engraved Pips + Vertical Doubles + Snake Board + 3-Level Local AI Bot)
 // Format: [GAME_DOMINO]|boardTilesCsv(6-6,6-4)|p1Id:p1Name:handCsv|p2Id:p2Name:handCsv|boneyardCsv|turnUid|status
 // ============================================================================
 
@@ -869,7 +862,25 @@ fun InChatDominoTableCard(
     currentUserName: String,
     onUpdateState: (String) -> Unit
 ) {
-    val parts = rawState.split("|")
+    // Support 100% Local AI Mode (0 server traffic during gameplay) as well as Live Multiplayer sync
+    var isLocalBotMode by remember { mutableStateOf(false) }
+    var botDifficulty by remember { mutableStateOf("MEDIUM") } // EASY, MEDIUM, PRO
+    var showBotLevelPicker by remember { mutableStateOf(false) }
+    var isFullScreenTable by remember { mutableStateOf(false) }
+    var localGameState by remember(rawState) {
+        mutableStateOf(rawState)
+    }
+
+    val activeStateString = if (isLocalBotMode) localGameState else rawState
+
+    fun dispatchStateUpdate(nextState: String, forceServerSync: Boolean = false) {
+        localGameState = nextState
+        if (!isLocalBotMode || forceServerSync) {
+            onUpdateState(nextState)
+        }
+    }
+
+    val parts = activeStateString.split("|")
     val boardRaw = parts.getOrNull(1).orEmpty()
     val p1Raw = parts.getOrNull(2).orEmpty()
     val p2Raw = parts.getOrNull(3).orEmpty()
@@ -890,14 +901,15 @@ fun InChatDominoTableCard(
     val boardTiles = remember(boardRaw) { boardRaw.split(",").filter { it.contains("-") } }
     val boneyard = remember(boneyardRaw) { boneyardRaw.split(",").filter { it.contains("-") } }
 
-    val isPlayer1 = currentUserId == p1Id
-    val isPlayer2 = currentUserId == p2Id
+    val isPlayer1 = currentUserId == p1Id || (isLocalBotMode && p2Id.startsWith("BOT_"))
+    val isPlayer2 = !isPlayer1 && currentUserId == p2Id
     val myHand = when {
         isPlayer1 -> p1Hand
         isPlayer2 -> p2Hand
         else -> emptyList()
     }
-    val isMyTurn = (status == "ACTIVE") && (currentUserId == turnUid)
+    val isMyTurn = (status == "ACTIVE") && ((isPlayer1 && turnUid == p1Id) || (isPlayer2 && turnUid == p2Id))
+    val isBotTurn = (status == "ACTIVE") && p2Id.startsWith("BOT_") && turnUid == p2Id
 
     val leftEnd: Int? = remember(boardTiles) {
         boardTiles.firstOrNull()?.split("-")?.firstOrNull()?.toIntOrNull()
@@ -906,56 +918,74 @@ fun InChatDominoTableCard(
         boardTiles.lastOrNull()?.split("-")?.getOrNull(1)?.toIntOrNull()
     }
 
-    fun canPlayTile(tile: String): Boolean {
-        if (boardTiles.isEmpty()) return true
+    fun tileSum(tile: String): Int {
+        val ab = tile.split("-")
+        return (ab.getOrNull(0)?.toIntOrNull() ?: 0) + (ab.getOrNull(1)?.toIntOrNull() ?: 0)
+    }
+
+    fun canPlayTileOnEnds(tile: String, lEnd: Int?, rEnd: Int?): Boolean {
+        if (boardTiles.isEmpty() || lEnd == null || rEnd == null) return true
         val ab = tile.split("-")
         val a = ab.getOrNull(0)?.toIntOrNull() ?: return false
         val b = ab.getOrNull(1)?.toIntOrNull() ?: return false
-        return a == leftEnd || b == leftEnd || a == rightEnd || b == rightEnd
+        return a == lEnd || b == lEnd || a == rEnd || b == rEnd
     }
 
-    fun playTileOnBoard(tile: String) {
-        if (!isMyTurn) return
+    fun attachTileToBoard(tile: String, currentBoard: List<String>, preferRight: Boolean = false): List<String>? {
         val ab = tile.split("-")
-        val a = ab[0].toInt()
-        val b = ab[1].toInt()
+        val a = ab.getOrNull(0)?.toIntOrNull() ?: return null
+        val b = ab.getOrNull(1)?.toIntOrNull() ?: return null
+        if (currentBoard.isEmpty()) return listOf(tile)
+        val lEnd = currentBoard.first().split("-")[0].toInt()
+        val rEnd = currentBoard.last().split("-")[1].toInt()
 
-        val nextBoard = if (boardTiles.isEmpty()) {
-            listOf(tile)
-        } else if (b == leftEnd) {
-            listOf("$a-$b") + boardTiles
-        } else if (a == leftEnd) {
-            listOf("$b-$a") + boardTiles
-        } else if (a == rightEnd) {
-            boardTiles + listOf("$a-$b")
-        } else if (b == rightEnd) {
-            boardTiles + listOf("$b-$a")
-        } else {
-            return
+        val canLeft = (a == lEnd || b == lEnd)
+        val canRight = (a == rEnd || b == rEnd)
+
+        return when {
+            preferRight && canRight -> {
+                if (a == rEnd) currentBoard + listOf("$a-$b") else currentBoard + listOf("$b-$a")
+            }
+            canLeft -> {
+                if (b == lEnd) listOf("$a-$b") + currentBoard else listOf("$b-$a")
+            }
+            canRight -> {
+                if (a == rEnd) currentBoard + listOf("$a-$b") else currentBoard + listOf("$b-$a")
+            }
+            else -> null
         }
+    }
 
+    fun evaluateLockedBoardWinner(hand1: List<String>, hand2: List<String>): String {
+        val sum1 = hand1.sumOf { tileSum(it) }
+        val sum2 = hand2.sumOf { tileSum(it) }
+        VirusXEffectsAndNotifications.playSoundEffect("VICTORY")
+        return when {
+            sum1 < sum2 -> "WIN:$p1Name (كسب بقفل الطاولة $sum1 مقابل $sum2)"
+            sum2 < sum1 -> "WIN:$p2Name (كسب بقفل الطاولة $sum2 مقابل $sum1)"
+            else -> "WIN:تعادل بقفل الطاولة ($sum1 نقطة لكل طرف)"
+        }
+    }
+
+    fun executeHumanPlay(tile: String) {
+        if (!isMyTurn) return
+        val nextBoard = attachTileToBoard(tile, boardTiles) ?: return
         val nextMyHand = myHand.toMutableList().also { it.remove(tile) }
         val nextP1Hand = if (isPlayer1) nextMyHand else p1Hand
         val nextP2Hand = if (isPlayer2) nextMyHand else p2Hand
 
-        val nextStatus = when {
-            nextP1Hand.isEmpty() -> {
-                VirusXEffectsAndNotifications.playSoundEffect("VICTORY")
-                "WIN:$p1Name (دومينو!)"
-            }
-            nextP2Hand.isEmpty() -> {
-                VirusXEffectsAndNotifications.playSoundEffect("VICTORY")
-                "WIN:$p2Name (دومينو!)"
-            }
-            else -> "ACTIVE"
-        }
+        val isWin = nextMyHand.isEmpty()
+        val nextStatus = if (isWin) {
+            VirusXEffectsAndNotifications.playSoundEffect("VICTORY")
+            "WIN:${if (isPlayer1) p1Name else p2Name} (دومينو! 🏆)"
+        } else "ACTIVE"
+
         val nextTurn = if (isPlayer1) p2Id else p1Id
-        onUpdateState(
-            "[GAME_DOMINO]|${nextBoard.joinToString(",")}|$p1Id:$p1Name:${nextP1Hand.joinToString(",")}|$p2Id:$p2Name:${nextP2Hand.joinToString(",")}|${boneyard.joinToString(",")}|$nextTurn|$nextStatus"
-        )
+        val encoded = "[GAME_DOMINO]|${nextBoard.joinToString(",")}|$p1Id:$p1Name:${nextP1Hand.joinToString(",")}|$p2Id:$p2Name:${nextP2Hand.joinToString(",")}|${boneyard.joinToString(",")}|$nextTurn|$nextStatus"
+        dispatchStateUpdate(encoded, forceServerSync = isWin)
     }
 
-    fun drawFromBoneyardOrPass() {
+    fun executeHumanDrawOrPass() {
         if (!isMyTurn) return
         if (boneyard.isNotEmpty()) {
             val drawn = boneyard.first()
@@ -963,218 +993,679 @@ fun InChatDominoTableCard(
             val nextMyHand = myHand + drawn
             val nextP1Hand = if (isPlayer1) nextMyHand else p1Hand
             val nextP2Hand = if (isPlayer2) nextMyHand else p2Hand
-            onUpdateState(
-                "[GAME_DOMINO]|${boardTiles.joinToString(",")}|$p1Id:$p1Name:${nextP1Hand.joinToString(",")}|$p2Id:$p2Name:${nextP2Hand.joinToString(",")}|${nextBoneyard.joinToString(",")}|$turnUid|ACTIVE"
-            )
+            val encoded = "[GAME_DOMINO]|${boardTiles.joinToString(",")}|$p1Id:$p1Name:${nextP1Hand.joinToString(",")}|$p2Id:$p2Name:${nextP2Hand.joinToString(",")}|${nextBoneyard.joinToString(",")}|$turnUid|ACTIVE"
+            dispatchStateUpdate(encoded)
         } else {
-            // Pass turn if boneyard is empty
+            // Check if opponent is also blocked -> Lock Game!
+            val oppHand = if (isPlayer1) p2Hand else p1Hand
+            val oppHasMove = oppHand.any { canPlayTileOnEnds(it, leftEnd, rightEnd) }
+            val nextStatus = if (!oppHasMove) evaluateLockedBoardWinner(p1Hand, p2Hand) else "ACTIVE"
             val nextTurn = if (isPlayer1) p2Id else p1Id
-            onUpdateState(
-                "[GAME_DOMINO]|${boardTiles.joinToString(",")}|$p1Id:$p1Name:${p1Hand.joinToString(",")}|$p2Id:$p2Name:${p2Hand.joinToString(",")}|${boneyard.joinToString(",")}|$nextTurn|ACTIVE"
-            )
+            val encoded = "[GAME_DOMINO]|${boardTiles.joinToString(",")}|$p1Id:$p1Name:${p1Hand.joinToString(",")}|$p2Id:$p2Name:${p2Hand.joinToString(",")}|${boneyard.joinToString(",")}|$nextTurn|$nextStatus"
+            dispatchStateUpdate(encoded, forceServerSync = nextStatus.startsWith("WIN:"))
         }
     }
 
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(16.dp))
-            .background(
-                Brush.verticalGradient(
-                    listOf(Color(0xFF0D2E22), Color(0xFF071A13))
-                )
-            )
-            .border(1.5.dp, Color(0xFFD4AF37), RoundedCornerShape(16.dp))
-            .padding(12.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(8.dp)
-    ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text("🁣 طاولة الدومينو الحية", color = Color(0xFFFFD54F), fontWeight = FontWeight.ExtraBold, fontSize = 13.sp)
-            Text("السوق: ${boneyard.size} قطعة", color = TextSecondary, fontSize = 11.sp, fontWeight = FontWeight.Bold)
-        }
+    // Smart Rule-Based Local AI Bot Engine (Easy / Medium / Pro) - 0 Server Cost!
+    LaunchedEffect(activeStateString, isBotTurn, isLocalBotMode) {
+        if (isBotTurn) {
+            delay(850L) // Natural thinking pause
+            var currentBotHand = p2Hand.toMutableList()
+            var currentBoneyard = boneyard.toMutableList()
 
-        if (status == "WAITING_P2") {
-            Text("المؤسس: $p1Name (7 قطع) • بانتظار خصم للجلوس على الطاولة!", color = TextPrimary, fontSize = 12.sp, textAlign = TextAlign.Center)
-            if (!isPlayer1) {
-                Button(
-                    onClick = {
-                        val cleanName = currentUserName.replace(":", "").replace("|", "").replace(",", "").ifBlank { "اللاعب 2" }
-                        onUpdateState(
-                            "[GAME_DOMINO]||$p1Id:$p1Name:${p1Hand.joinToString(",")}|$currentUserId:$cleanName:${p2Hand.joinToString(",")}|${boneyard.joinToString(",")}|$p1Id|ACTIVE"
-                        )
-                    },
-                    colors = ButtonDefaults.buttonColors(containerColor = OnlineGreen)
+            // Draw from boneyard until bot finds a playable tile or boneyard empties
+            while (currentBotHand.none { canPlayTileOnEnds(it, leftEnd, rightEnd) } && currentBoneyard.isNotEmpty()) {
+                currentBotHand.add(currentBoneyard.removeAt(0))
+                val midState = "[GAME_DOMINO]|${boardTiles.joinToString(",")}|$p1Id:$p1Name:${p1Hand.joinToString(",")}|$p2Id:$p2Name:${currentBotHand.joinToString(",")}|${currentBoneyard.joinToString(",")}|$p2Id|ACTIVE"
+                dispatchStateUpdate(midState)
+                delay(480L)
+            }
+
+            val playableTiles = currentBotHand.filter { canPlayTileOnEnds(it, leftEnd, rightEnd) }
+            if (playableTiles.isEmpty()) {
+                // Bot must pass (or lock board if human also has no move)
+                val humanHasMove = p1Hand.any { canPlayTileOnEnds(it, leftEnd, rightEnd) }
+                val nextStatus = if (!humanHasMove && currentBoneyard.isEmpty()) {
+                    evaluateLockedBoardWinner(p1Hand, currentBotHand)
+                } else "ACTIVE"
+                val passState = "[GAME_DOMINO]|${boardTiles.joinToString(",")}|$p1Id:$p1Name:${p1Hand.joinToString(",")}|$p2Id:$p2Name:${currentBotHand.joinToString(",")}|$p1Id|$nextStatus"
+                dispatchStateUpdate(passState, forceServerSync = nextStatus.startsWith("WIN:"))
+            } else {
+                // Choose tile based on Bot Difficulty Level
+                val chosenTile = when (botDifficulty) {
+                    "EASY" -> playableTiles.random()
+                    "MEDIUM" -> {
+                        // Medium: prioritizes doubles & heavy pip count
+                        playableTiles.maxByOrNull { t ->
+                            val ab = t.split("-")
+                            val a = ab[0].toInt()
+                            val b = ab[1].toInt()
+                            (if (a == b) 30 else 0) + (a + b)
+                        } ?: playableTiles.first()
+                    }
+                    else -> {
+                        // PRO (حريف): Heuristic tactical scoring
+                        // 1. High double priority (+45)
+                        // 2. Heavy pip weight (+3 * sum)
+                        // 3. Frequency control: prefers leaving an end number that the bot holds multiple of in its remaining hand (+18 per matching tile)
+                        val numberFreq = IntArray(7)
+                        currentBotHand.forEach { t ->
+                            val ab = t.split("-")
+                            val a = ab[0].toInt()
+                            val b = ab[1].toInt()
+                            numberFreq[a]++
+                            if (b != a) numberFreq[b]++
+                        }
+                        playableTiles.maxByOrNull { t ->
+                            val ab = t.split("-")
+                            val a = ab[0].toInt()
+                            val b = ab[1].toInt()
+                            val isDouble = (a == b)
+                            val doubleScore = if (isDouble) (35 + a * 3) else 0
+                            val weightScore = (a + b) * 3
+                            val resultingBoard = attachTileToBoard(t, boardTiles) ?: boardTiles
+                            val newL = resultingBoard.first().split("-")[0].toInt()
+                            val newR = resultingBoard.last().split("-")[1].toInt()
+                            val controlScore = (numberFreq[newL] + numberFreq[newR]) * 16
+                            doubleScore + weightScore + controlScore
+                        } ?: playableTiles.first()
+                    }
+                }
+
+                val nextBoard = attachTileToBoard(chosenTile, boardTiles) ?: boardTiles
+                currentBotHand.remove(chosenTile)
+                val botWon = currentBotHand.isEmpty()
+                val nextStatus = if (botWon) {
+                    VirusXEffectsAndNotifications.playSoundEffect("GAMEOVER")
+                    "WIN:$p2Name (دومينو! 🤖)"
+                } else "ACTIVE"
+
+                val nextState = "[GAME_DOMINO]|${nextBoard.joinToString(",")}|$p1Id:$p1Name:${p1Hand.joinToString(",")}|$p2Id:$p2Name:${currentBotHand.joinToString(",")}|${currentBoneyard.joinToString(",")}|$p1Id|$nextStatus"
+                dispatchStateUpdate(nextState, forceServerSync = botWon)
+            }
+        }
+    }
+
+    @Composable
+    fun RenderDominoTableContent(isExpandedModal: Boolean) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(16.dp))
+                .background(
+                    Brush.verticalGradient(
+                        listOf(Color(0xFF0A291E), Color(0xFF051610))
+                    )
+                )
+                .border(1.5.dp, Color(0xFFD4AF37), RoundedCornerShape(16.dp))
+                .padding(if (isExpandedModal) 16.dp else 12.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            // Clean Header Bar
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
-                    Text("🪑 الجلوس على الطاولة وبدء الجيم", color = Color.Black, fontWeight = FontWeight.ExtraBold, fontSize = 12.sp)
+                    Text("🁣 طاولة الدومينو الملكية", color = Color(0xFFFFD54F), fontWeight = FontWeight.ExtraBold, fontSize = 13.sp)
+                    if (isLocalBotMode) {
+                        val badgeTxt = when (botDifficulty) {
+                            "EASY" -> "🟢 سهل"
+                            "MEDIUM" -> "🟡 متوسط"
+                            else -> "🔴 حريف"
+                        }
+                        Text(
+                            text = badgeTxt,
+                            color = Color.Black,
+                            fontWeight = FontWeight.ExtraBold,
+                            fontSize = 9.sp,
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(6.dp))
+                                .background(WarningAmber)
+                                .padding(horizontal = 5.dp, vertical = 2.dp)
+                        )
+                    }
+                }
+
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Text("السوق: ${boneyard.size}", color = TextSecondary, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                    Text(
+                        text = if (isExpandedModal) "✕ تصغير" else "⛶ تكبير",
+                        color = OnlineGreen,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 11.sp,
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(Color.Black.copy(alpha = 0.35f))
+                            .clickable { isFullScreenTable = !isExpandedModal }
+                            .padding(horizontal = 7.dp, vertical = 3.dp)
+                    )
                 }
             }
-        } else {
-            // Players Scoreboard Header
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(10.dp))
-                    .background(Color.Black.copy(alpha = 0.28f))
-                    .padding(horizontal = 10.dp, vertical = 6.dp),
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                Text(
-                    text = "${if (turnUid == p1Id && status == "ACTIVE") "🟢 " else ""}$p1Name (${p1Hand.size})",
-                    color = if (turnUid == p1Id) OnlineGreen else TextPrimary,
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 11.sp
-                )
-                Text("⚡ ضد ⚡", color = WarningAmber, fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                Text(
-                    text = "${if (turnUid == p2Id && status == "ACTIVE") "🟢 " else ""}$p2Name (${p2Hand.size})",
-                    color = if (turnUid == p2Id) OnlineGreen else TextPrimary,
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 11.sp
-                )
-            }
 
-            // Green Felt Domino Board Chain
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .heightIn(min = 78.dp)
-                    .clip(RoundedCornerShape(12.dp))
-                    .background(Color(0xFF06130D))
-                    .border(1.dp, Color(0xFF1F4E3B), RoundedCornerShape(12.dp))
-                    .padding(8.dp),
-                contentAlignment = Alignment.Center
-            ) {
-                if (boardTiles.isEmpty()) {
-                    Text("الطاولة جاهزة — العب أول بلاطة للبدء!", color = TextSecondary, fontSize = 11.sp)
-                } else {
+            // STAGE 1: PROGRESSIVE DISCLOSURE LOBBY (Zero Button Clutter!)
+            if (status == "WAITING_P2") {
+                Text(
+                    text = "الطاولة جاهزة ($p1Name) • اختر اللعب مع صديق أو تحدي البوت الذكي:",
+                    color = TextPrimary,
+                    fontSize = 11.sp,
+                    textAlign = TextAlign.Center
+                )
+
+                if (!showBotLevelPicker) {
                     Row(
-                        modifier = Modifier.horizontalScroll(rememberScrollState()),
-                        horizontalArrangement = Arrangement.spacedBy(4.dp),
-                        verticalAlignment = Alignment.CenterVertically
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        boardTiles.forEach { t ->
-                            val nums = t.split("-")
-                            val topN = nums.getOrNull(0)?.toIntOrNull() ?: 0
-                            val botN = nums.getOrNull(1)?.toIntOrNull() ?: 0
-                            DominoTileCanvas(
-                                leftVal = topN,
-                                rightVal = botN,
-                                isPlayable = false,
-                                onClick = {}
+                        if (currentUserId != p1Id) {
+                            Button(
+                                onClick = {
+                                    val cleanName = currentUserName.replace(":", "").replace("|", "").replace(",", "").ifBlank { "اللاعب 2" }
+                                    dispatchStateUpdate(
+                                        "[GAME_DOMINO]||$p1Id:$p1Name:${p1Hand.joinToString(",")}|$currentUserId:$cleanName:${p2Hand.joinToString(",")}|${boneyard.joinToString(",")}|$p1Id|ACTIVE",
+                                        forceServerSync = true
+                                    )
+                                },
+                                colors = ButtonDefaults.buttonColors(containerColor = OnlineGreen),
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Text("🪑 جلوس ضد $p1Name", color = Color.Black, fontWeight = FontWeight.ExtraBold, fontSize = 11.sp)
+                            }
+                        } else {
+                            OutlinedButton(
+                                onClick = {},
+                                enabled = false,
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Text("⏳ بانتظار صديق...", color = TextSecondary, fontSize = 11.sp)
+                            }
+                        }
+
+                        Button(
+                            onClick = { showBotLevelPicker = true },
+                            colors = ButtonDefaults.buttonColors(containerColor = WarningAmber),
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Text("🤖 تحدي البوت ▼", color = Color.Black, fontWeight = FontWeight.ExtraBold, fontSize = 11.sp)
+                        }
+                    }
+                } else {
+                    // Clean Segmented Difficulty Bar (Disappears immediately after tap!)
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(Color.Black.copy(alpha = 0.32f))
+                            .padding(8.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        Text("اختر مستوى ذكاء البوت (0 استهلاك سيرفر):", color = WarningAmber, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            val levels = listOf(
+                                Triple("EASY", "🟢 سهل", Color(0xFF00E676)),
+                                Triple("MEDIUM", "🟡 متوسط", Color(0xFFFFD54F)),
+                                Triple("PRO", "🔴 حريف", Color(0xFFFF5252))
+                            )
+                            levels.forEach { (lvlKey, lvlTitle, lvlColor) ->
+                                Box(
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .clip(RoundedCornerShape(10.dp))
+                                        .background(lvlColor.copy(alpha = 0.2f))
+                                        .border(1.dp, lvlColor, RoundedCornerShape(10.dp))
+                                        .clickable {
+                                            botDifficulty = lvlKey
+                                            isLocalBotMode = true
+                                            showBotLevelPicker = false
+                                            val botLabel = when (lvlKey) {
+                                                "EASY" -> "🤖 البوت (سهل)"
+                                                "MEDIUM" -> "🤖 البوت (متوسط)"
+                                                else -> "🤖 البوت (حريف)"
+                                            }
+                                            val myUid = currentUserId.ifBlank { p1Id }
+                                            val myCleanName = currentUserName.replace(":", "").replace("|", "").replace(",", "").ifBlank { p1Name }
+                                            localGameState = "[GAME_DOMINO]||$myUid:$myCleanName:${p1Hand.joinToString(",")}|BOT_$lvlKey:$botLabel:${p2Hand.joinToString(",")}|${boneyard.joinToString(",")}|$myUid|ACTIVE"
+                                        }
+                                        .padding(vertical = 8.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text(lvlTitle, color = lvlColor, fontWeight = FontWeight.ExtraBold, fontSize = 11.sp)
+                                }
+                            }
+                        }
+                    }
+                }
+            } else {
+                // STAGE 2: ACTIVE GAMEPLAY (Compact Score Header + Snake Felt Board + Player Upright Hand)
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(Color.Black.copy(alpha = 0.30f))
+                        .padding(horizontal = 10.dp, vertical = 6.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "${if (turnUid == p1Id && status == "ACTIVE") "🟢 " else ""}$p1Name (${p1Hand.size} قطع)",
+                        color = if (turnUid == p1Id) OnlineGreen else TextPrimary,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 11.sp
+                    )
+                    if (leftEnd != null && rightEnd != null) {
+                        Text(
+                            text = "الأطراف: [$leftEnd | $rightEnd]",
+                            color = WarningAmber,
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.ExtraBold
+                        )
+                    } else {
+                        Text("⚡ ضد ⚡", color = WarningAmber, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                    }
+                    Text(
+                        text = "${if (turnUid == p2Id && status == "ACTIVE") "🟢 " else ""}$p2Name (${p2Hand.size} قطع)",
+                        color = if (turnUid == p2Id) OnlineGreen else TextPrimary,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 11.sp
+                    )
+                }
+
+                // Multi-Row Snake Domino Felt Board (With Vertical Doubles & Engraved Pips)
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(min = if (isExpandedModal) 260.dp else 135.dp)
+                        .clip(RoundedCornerShape(14.dp))
+                        .background(
+                            Brush.radialGradient(
+                                listOf(Color(0xFF0E3828), Color(0xFF061A12))
+                            )
+                        )
+                        .border(1.2.dp, Color(0xFF26634B), RoundedCornerShape(14.dp))
+                        .padding(10.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    if (boardTiles.isEmpty()) {
+                        Text(
+                            text = "الطاولة جاهزة — المس أي ورقة من يدك لإنزالها على الطاولة!",
+                            color = TextSecondary,
+                            fontSize = 11.sp,
+                            textAlign = TextAlign.Center
+                        )
+                    } else {
+                        DominoSnakeBoardLayout(boardTiles = boardTiles)
+                    }
+                }
+
+                // STAGE 3: WINNER BANNER OR PLAYER HAND
+                if (status.startsWith("WIN:")) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(OnlineGreen.copy(alpha = 0.16f))
+                            .border(1.dp, OnlineGreen, RoundedCornerShape(12.dp))
+                            .padding(10.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        Text(
+                            text = "🏆 ${status.removePrefix("WIN:")}",
+                            color = OnlineGreen,
+                            fontWeight = FontWeight.ExtraBold,
+                            fontSize = 13.sp,
+                            textAlign = TextAlign.Center
+                        )
+                        Button(
+                            onClick = {
+                                val fresh = buildInitialDominoGameString(currentUserId.ifBlank { p1Id }, currentUserName.ifBlank { p1Name })
+                                if (isLocalBotMode) {
+                                    val sp = fresh.split("|")
+                                    val freshP1 = sp[2]
+                                    val freshP2Tiles = sp[3].substringAfterLast(":")
+                                    val freshBone = sp[4]
+                                    val botLabel = p2Name.ifBlank { "🤖 البوت" }
+                                    localGameState = "[GAME_DOMINO]||$freshP1|$p2Id:$botLabel:$freshP2Tiles|$freshBone|$p1Id|ACTIVE"
+                                } else {
+                                    dispatchStateUpdate(fresh, forceServerSync = true)
+                                }
+                            },
+                            colors = ButtonDefaults.buttonColors(containerColor = WarningAmber)
+                        ) {
+                            Text("🔄 جولة دومينو جديدة", color = Color.Black, fontWeight = FontWeight.ExtraBold, fontSize = 11.sp)
+                        }
+                    }
+                } else if (isPlayer1 || isPlayer2) {
+                    val hasAnyPlayable = myHand.any { canPlayTileOnEnds(it, leftEnd, rightEnd) }
+
+                    Text(
+                        text = when {
+                            isBotTurn -> "🤖 $p2Name يفكر في النقلة..."
+                            isMyTurn && hasAnyPlayable -> "🎯 دورك الآن! اختر ورقة مضيئة للعب:"
+                            isMyTurn && !hasAnyPlayable -> "⚠️ لا توجد ورقة مطابقة في يدك (${leftEnd} أو ${rightEnd})!"
+                            else -> "⏳ بانتظار حركة الخصم..."
+                        },
+                        color = when {
+                            isMyTurn && hasAnyPlayable -> OnlineGreen
+                            isMyTurn && !hasAnyPlayable -> WarningAmber
+                            else -> TextSecondary
+                        },
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 11.sp
+                    )
+
+                    // Upright Domino Tiles in Player's Hand
+                    LazyRow(
+                        horizontalArrangement = Arrangement.spacedBy(7.dp),
+                        modifier = Modifier.padding(vertical = 4.dp)
+                    ) {
+                        items(myHand) { tile ->
+                            val nums = tile.split("-")
+                            val topVal = nums.getOrNull(0)?.toIntOrNull() ?: 0
+                            val botVal = nums.getOrNull(1)?.toIntOrNull() ?: 0
+                            val playable = isMyTurn && canPlayTileOnEnds(tile, leftEnd, rightEnd)
+                            EngravedDominoTileCanvas(
+                                firstVal = topVal,
+                                secondVal = botVal,
+                                isVertical = true, // Upright in player's hand!
+                                isHighlighted = playable,
+                                onClick = { if (playable) executeHumanPlay(tile) }
+                            )
+                        }
+                    }
+
+                    // Progressive Disclosure: Draw/Pass button ONLY appears when player has no playable tile!
+                    if (isMyTurn && !hasAnyPlayable) {
+                        Button(
+                            onClick = { executeHumanDrawOrPass() },
+                            colors = ButtonDefaults.buttonColors(containerColor = WarningAmber),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text(
+                                text = if (boneyard.isNotEmpty()) "📥 سحب ورقة من السوق (المتبقي ${boneyard.size})"
+                                else "⏭️ تمرير الدور / حسم قفل الطاولة",
+                                color = Color.Black,
+                                fontWeight = FontWeight.ExtraBold,
+                                fontSize = 12.sp
                             )
                         }
                     }
                 }
             }
+        }
+    }
 
-            if (status.startsWith("WIN:")) {
-                Text(
-                    text = "🏆 ${status.removePrefix("WIN:")}",
-                    color = OnlineGreen,
-                    fontWeight = FontWeight.ExtraBold,
-                    fontSize = 14.sp
-                )
-            } else if (isPlayer1 || isPlayer2) {
-                Text(
-                    text = if (isMyTurn) "🎯 دورك الآن! اختر قطعة مناسبة للعب (${leftEnd ?: "أي"} أو ${rightEnd ?: "أي"}):"
-                    else "⏳ بانتظار حركة الخصم...",
-                    color = if (isMyTurn) WarningAmber else TextSecondary,
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 11.sp
-                )
+    RenderDominoTableContent(isExpandedModal = false)
 
-                LazyRow(
-                    horizontalArrangement = Arrangement.spacedBy(6.dp),
-                    modifier = Modifier.padding(vertical = 4.dp)
-                ) {
-                    items(myHand) { tile ->
-                        val nums = tile.split("-")
-                        val l = nums.getOrNull(0)?.toIntOrNull() ?: 0
-                        val r = nums.getOrNull(1)?.toIntOrNull() ?: 0
-                        val playable = isMyTurn && canPlayTile(tile)
-                        DominoTileCanvas(
-                            leftVal = l,
-                            rightVal = r,
-                            isPlayable = playable,
-                            onClick = { if (playable) playTileOnBoard(tile) }
-                        )
-                    }
+    if (isFullScreenTable) {
+        Dialog(
+            onDismissRequest = { isFullScreenTable = false },
+            properties = DialogProperties(usePlatformDefaultWidth = false)
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color.Black.copy(alpha = 0.92f))
+                    .padding(14.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                RenderDominoTableContent(isExpandedModal = true)
+            }
+        }
+    }
+}
+
+/**
+ * Snake / U-Turn Multi-Row Domino Board Layout:
+ * Wraps the domino chain every 4 tiles, alternating Left-to-Right and Right-to-Left rows
+ * with U-turn indicators, and automatically stands Double tiles (e.g. 6-6) vertically!
+ */
+@Composable
+private fun DominoSnakeBoardLayout(boardTiles: List<String>) {
+    val rows = remember(boardTiles) { boardTiles.chunked(4) }
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .horizontalScroll(rememberScrollState()),
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        rows.forEachIndexed { rowIndex, rowTiles ->
+            val isReversedRow = (rowIndex % 2 == 1)
+            val orderedRow = if (isReversedRow) rowTiles.reversed() else rowTiles
+
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                if (isReversedRow && rowIndex < rows.lastIndex) {
+                    Text("⤶", color = Color(0xFFFFD54F), fontWeight = FontWeight.ExtraBold, fontSize = 16.sp)
                 }
 
-                if (isMyTurn && myHand.none { canPlayTile(it) }) {
-                    Button(
-                        onClick = { drawFromBoneyardOrPass() },
-                        colors = ButtonDefaults.buttonColors(containerColor = WarningAmber)
-                    ) {
-                        Text(
-                            text = if (boneyard.isNotEmpty()) "📥 سحب بلاطة من السوق (${boneyard.size})" else "⏭️ تمرير الدور (قفل)",
-                            color = Color.Black,
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 11.sp
-                        )
-                    }
+                orderedRow.forEach { t ->
+                    val nums = t.split("-")
+                    val rawA = nums.getOrNull(0)?.toIntOrNull() ?: 0
+                    val rawB = nums.getOrNull(1)?.toIntOrNull() ?: 0
+                    val isDouble = (rawA == rawB)
+
+                    // On reversed (Right-to-Left) rows, flip horizontal tile halves so matching numbers visually touch!
+                    val displayFirst = if (isReversedRow && !isDouble) rawB else rawA
+                    val displaySecond = if (isReversedRow && !isDouble) rawA else rawB
+
+                    EngravedDominoTileCanvas(
+                        firstVal = displayFirst,
+                        secondVal = displaySecond,
+                        isVertical = isDouble, // Doubles stand vertically on the board!
+                        isHighlighted = false,
+                        onClick = {}
+                    )
+                }
+
+                if (!isReversedRow && rowIndex < rows.lastIndex) {
+                    Text("⤵", color = Color(0xFFFFD54F), fontWeight = FontWeight.ExtraBold, fontSize = 16.sp)
                 }
             }
         }
     }
 }
 
+/**
+ * Real Engraved 3D Domino Tile with Authentic Circular Pips & Brass Center Spinner Pin.
+ */
 @Composable
-private fun DominoTileCanvas(
-    leftVal: Int,
-    rightVal: Int,
-    isPlayable: Boolean,
+private fun EngravedDominoTileCanvas(
+    firstVal: Int,
+    secondVal: Int,
+    isVertical: Boolean,
+    isHighlighted: Boolean,
     onClick: () -> Unit
 ) {
+    val tileW = if (isVertical) 34.dp else 62.dp
+    val tileH = if (isVertical) 62.dp else 34.dp
+
     Canvas(
         modifier = Modifier
-            .size(width = 62.dp, height = 34.dp)
-            .clip(RoundedCornerShape(6.dp))
-            .clickable(enabled = isPlayable) { onClick() }
+            .size(width = tileW, height = tileH)
+            .clip(RoundedCornerShape(7.dp))
+            .clickable(enabled = isHighlighted) { onClick() }
     ) {
-        // Ivory Tile Body
+        // 1. Drop shadow / bevel base
         drawRoundRect(
-            color = if (isPlayable) Color(0xFFFFFDE7) else Color(0xFFEAE6DF),
-            cornerRadius = CornerRadius(12f, 12f),
+            color = Color(0xFF1A252C),
+            cornerRadius = CornerRadius(14f, 14f),
             size = size
         )
+
+        // 2. Warm Ivory 3D Tile Surface
+        val pad = 2f
         drawRoundRect(
-            color = if (isPlayable) Color(0xFF00E676) else Color(0xFF2C3E50),
-            cornerRadius = CornerRadius(12f, 12f),
-            size = size,
-            style = Stroke(width = if (isPlayable) 4f else 2f)
-        )
-        // Center Divider Line
-        drawLine(
-            color = Color(0xFF2C3E50),
-            start = Offset(size.width / 2f, 4f),
-            end = Offset(size.width / 2f, size.height - 4f),
-            strokeWidth = 2.5f
+            color = if (isHighlighted) Color(0xFFFFFEF5) else Color(0xFFF3EFE6),
+            topLeft = Offset(pad, pad),
+            size = Size(size.width - pad * 2, size.height - pad * 2),
+            cornerRadius = CornerRadius(12f, 12f)
         )
 
-        // Draw pips or crisp numbers on each half
-        drawContext.canvas.nativeCanvas.apply {
-            val paint = Paint().apply {
-                color = android.graphics.Color.rgb(20, 28, 38)
-                textSize = 32f
-                textAlign = Paint.Align.CENTER
-                typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
-                isAntiAlias = true
-            }
-            drawText(leftVal.toString(), size.width * 0.25f, size.height * 0.68f, paint)
-            drawText(rightVal.toString(), size.width * 0.75f, size.height * 0.68f, paint)
+        // 3. Outer Border (Glowing Neon Green when playable in hand)
+        drawRoundRect(
+            color = if (isHighlighted) Color(0xFF00E676) else Color(0xFF2C3E50),
+            cornerRadius = CornerRadius(14f, 14f),
+            size = size,
+            style = Stroke(width = if (isHighlighted) 4.5f else 2f)
+        )
+
+        // 4. Center Divider Line & Golden Brass Spinner Pin
+        if (isVertical) {
+            val midY = size.height / 2f
+            drawLine(
+                color = Color(0xFF34495E),
+                start = Offset(6f, midY),
+                end = Offset(size.width - 6f, midY),
+                strokeWidth = 2.4f
+            )
+            drawCircle(
+                color = Color(0xFFD4AF37),
+                radius = 2.6f,
+                center = Offset(size.width / 2f, midY)
+            )
+            // Top & Bottom Halves Pips
+            drawDominoHalfPips(
+                value = firstVal,
+                cx = size.width / 2f,
+                cy = size.height * 0.25f,
+                halfW = size.width,
+                halfH = size.height / 2f,
+                isVerticalTile = true
+            )
+            drawDominoHalfPips(
+                value = secondVal,
+                cx = size.width / 2f,
+                cy = size.height * 0.75f,
+                halfW = size.width,
+                halfH = size.height / 2f,
+                isVerticalTile = true
+            )
+        } else {
+            val midX = size.width / 2f
+            drawLine(
+                color = Color(0xFF34495E),
+                start = Offset(midX, 6f),
+                end = Offset(midX, size.height - 6f),
+                strokeWidth = 2.4f
+            )
+            drawCircle(
+                color = Color(0xFFD4AF37),
+                radius = 2.6f,
+                center = Offset(midX, size.height / 2f)
+            )
+            // Left & Right Halves Pips
+            drawDominoHalfPips(
+                value = firstVal,
+                cx = size.width * 0.25f,
+                cy = size.height / 2f,
+                halfW = size.width / 2f,
+                halfH = size.height,
+                isVerticalTile = false
+            )
+            drawDominoHalfPips(
+                value = secondVal,
+                cx = size.width * 0.75f,
+                cy = size.height / 2f,
+                halfW = size.width / 2f,
+                halfH = size.height,
+                isVerticalTile = false
+            )
         }
     }
 }
 
-// ============================================================================
-// HELPER TO GENERATE SHUFFLED DOMINO INITIAL STATE
-// ============================================================================
+private fun DrawScope.drawDominoHalfPips(
+    value: Int,
+    cx: Float,
+    cy: Float,
+    halfW: Float,
+    halfH: Float,
+    isVerticalTile: Boolean
+) {
+    if (value <= 0) return
+
+    // Classic colour-coded engraved pips for instant visual recognition
+    val pipColor = when (value) {
+        1 -> Color(0xFF1E272E)
+        2 -> Color(0xFF0097E6)
+        3 -> Color(0xFFE84118)
+        4 -> Color(0xFF009432)
+        5 -> Color(0xFF8C7AE6)
+        6 -> Color(0xFFC23616)
+        else -> Color(0xFF1E272E)
+    }
+
+    val dx = halfW * 0.27f
+    val dy = halfH * 0.27f
+    val r = (min(halfW, halfH) * 0.115f).coerceAtLeast(2.8f)
+
+    fun pip(ox: Float, oy: Float) {
+        drawCircle(color = pipColor, radius = r, center = Offset(cx + ox, cy + oy))
+    }
+
+    when (value) {
+        1 -> pip(0f, 0f)
+        2 -> {
+            pip(-dx, -dy)
+            pip(dx, dy)
+        }
+        3 -> {
+            pip(-dx, -dy)
+            pip(0f, 0f)
+            pip(dx, dy)
+        }
+        4 -> {
+            pip(-dx, -dy)
+            pip(dx, -dy)
+            pip(-dx, dy)
+            pip(dx, dy)
+        }
+        5 -> {
+            pip(-dx, -dy)
+            pip(dx, -dy)
+            pip(0f, 0f)
+            pip(-dx, dy)
+            pip(dx, dy)
+        }
+        6 -> {
+            if (isVerticalTile) {
+                // 2 columns x 3 rows
+                pip(-dx, -dy)
+                pip(dx, -dy)
+                pip(-dx, 0f)
+                pip(dx, 0f)
+                pip(-dx, dy)
+                pip(dx, dy)
+            } else {
+                // 3 columns x 2 rows
+                pip(-dx, -dy)
+                pip(0f, -dy)
+                pip(dx, -dy)
+                pip(-dx, dy)
+                pip(0f, dy)
+                pip(dx, dy)
+            }
+        }
+    }
+}
+
 fun buildInitialDominoGameString(hostId: String, hostName: String): String {
     val cleanHost = hostName.replace(":", "").replace("|", "").replace(",", "").ifBlank { "اللاعب 1" }
     val allTiles = mutableListOf<String>()

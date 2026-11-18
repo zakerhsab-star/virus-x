@@ -1,5 +1,15 @@
 package com.virusx.app.ui.admin
 
+import android.widget.Toast
+import androidx.compose.ui.platform.LocalContext
+import com.virusx.app.ui.components.AccountSwitchSupabaseEntryPoint
+import dagger.hilt.android.EntryPointAccessors
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.buildJsonObject
+
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -358,6 +368,12 @@ private fun AdminLiveRadarUsersTab(
                         Text(if (user.mutedUntil.isNullOrBlank()) "كتم 24س" else "فك الكتم", fontSize = 12.sp)
                     }
                 }
+                Spacer(modifier = Modifier.height(8.dp))
+                SuperAdminResetPasswordWidget(
+                    targetUserId = user.id,
+                    targetDisplayName = user.displayName,
+                    targetUsername = user.username
+                )
             }
         }
     }
@@ -517,8 +533,8 @@ private fun AdminBroadcastAndSecurityTab(
 ) {
     var title by remember { mutableStateOf("") }
     var body by remember { mutableStateOf("") }
-    var verCode by remember { mutableStateOf("7") }
-    var verName by remember { mutableStateOf("1.0.6") }
+    var verCode by remember { mutableStateOf("8") }
+    var verName by remember { mutableStateOf("1.0.7") }
     var apkUrl by remember { mutableStateOf("") }
     var notes by remember { mutableStateOf("تحديث جديد يتضمن إضافات وتحسينات في الأداء") }
     var forceUpdate by remember { mutableStateOf(false) }
@@ -649,5 +665,129 @@ private fun AdminBroadcastAndSecurityTab(
                 Text("تفعيل القفل النهائي")
             }
         }
+    }
+}
+
+
+@Composable
+fun SuperAdminResetPasswordWidget(
+    targetUserId: String,
+    targetDisplayName: String,
+    targetUsername: String
+) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var showResetDialog by remember { mutableStateOf(false) }
+    var newPasswordInput by remember { mutableStateOf("") }
+    var isUpdating by remember { mutableStateOf(false) }
+    var errorMsg by remember { mutableStateOf<String?>(null) }
+
+    OutlinedButton(
+        onClick = {
+            newPasswordInput = ""
+            errorMsg = null
+            showResetDialog = true
+        },
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(12.dp)
+    ) {
+        Text(
+            text = "🔑 إعادة تعيين كلمة السر (@$targetUsername)",
+            color = OnlineGreen,
+            fontWeight = FontWeight.Bold
+        )
+    }
+
+    if (showResetDialog) {
+        AlertDialog(
+            onDismissRequest = { if (!isUpdating) showResetDialog = false },
+            containerColor = VirusXSurface,
+            title = {
+                Text(
+                    text = "🔑 تعيين كلمة سر جديدة",
+                    color = TextPrimary,
+                    fontWeight = FontWeight.Bold
+                )
+            },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text(
+                        text = "الحساب: $targetDisplayName (@$targetUsername)",
+                        color = VirusXSecondaryWhisper,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                    OutlinedTextField(
+                        value = newPasswordInput,
+                        onValueChange = {
+                            newPasswordInput = it
+                            errorMsg = null
+                        },
+                        label = { Text("كلمة المرور الجديدة (6 أحرف أو أرقام فأكثر)") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    errorMsg?.let { err ->
+                        Text(text = "⚠️ $err", color = DangerRed, fontWeight = FontWeight.Bold)
+                    }
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        val cleanPass = newPasswordInput.trim()
+                        if (cleanPass.length < 6) {
+                            errorMsg = "كلمة المرور يجب أن تكون 6 خانات على الأقل"
+                            return@Button
+                        }
+                        isUpdating = true
+                        errorMsg = null
+                        scope.launch {
+                            val res = withContext(Dispatchers.IO) {
+                                runCatching {
+                                    val ep = EntryPointAccessors.fromApplication(
+                                        context.applicationContext,
+                                        AccountSwitchSupabaseEntryPoint::class.java
+                                    )
+                                    ep.postgrest().rpc(
+                                        "super_admin_reset_password",
+                                        buildJsonObject {
+                                            put("_target_user_id", JsonPrimitive(targetUserId))
+                                            put("_new_password", JsonPrimitive(cleanPass))
+                                        }
+                                    )
+                                }
+                            }
+                            isUpdating = false
+                            res.onSuccess {
+                                showResetDialog = false
+                                Toast.makeText(
+                                    context,
+                                    "✅ تم تغيير كلمة السر لحساب @$targetUsername بنجاح!",
+                                    Toast.LENGTH_LONG
+                                ).show()
+                            }.onFailure { e ->
+                                errorMsg = "تأكد من تشغيل كود SQL دالة super_admin_reset_password في Supabase (${e.localizedMessage?.take(45)})"
+                            }
+                        }
+                    },
+                    enabled = !isUpdating,
+                    colors = ButtonDefaults.buttonColors(containerColor = OnlineGreen)
+                ) {
+                    Text(
+                        text = if (isUpdating) "جاري الحفظ..." else "حفظ الباسورد الجديد",
+                        color = androidx.compose.ui.graphics.Color.Black,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = { showResetDialog = false },
+                    enabled = !isUpdating
+                ) {
+                    Text("إلغاء", color = TextSecondary)
+                }
+            }
+        )
     }
 }
