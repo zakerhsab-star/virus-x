@@ -130,6 +130,7 @@ fun ChatScreen(
     val isTranscribing by viewModel.isTranscribing.collectAsState()
 
     var showPlusMenuSheet by remember { mutableStateOf(false) }
+    var showGroupManageDialog by remember { mutableStateOf(false) }
     var showSoundboardDialog by remember { mutableStateOf(false) }
     var showGamePickerDialog by remember { mutableStateOf(false) }
     var showBadgeManagerDialog by remember { mutableStateOf(false) }
@@ -156,6 +157,18 @@ fun ChatScreen(
                 ActiveChatTracker.currentOpenChatId = null
             }
         }
+    }
+
+
+    if (showGroupManageDialog) {
+        GroupManagementDialog(
+            chatId = chatId,
+            currentGroupName = state.chatTitle,
+            currentUserId = state.currentUserId.orEmpty(),
+            onDismiss = { showGroupManageDialog = false },
+            onGroupRenamed = { },
+            onGroupRemovedOrLeft = { onBack() }
+        )
     }
 
     LaunchedEffect(state.currentUserId) {
@@ -1011,6 +1024,17 @@ fun ChatScreen(
                             showBadgeManagerDialog = true
                         }
                     )
+                }
+                Spacer(modifier = Modifier.height(6.dp))
+                OutlinedButton(
+                    onClick = {
+                        showPlusMenuSheet = false
+                        showGroupManageDialog = true
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Text("إدارة الجروب (تعديل الاسم / مغادرة / حذف)", fontWeight = FontWeight.SemiBold)
                 }
 
                 Spacer(modifier = Modifier.height(10.dp))

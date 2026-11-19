@@ -435,19 +435,22 @@ object VirusXEffectsAndNotifications {
             val count = (sampleRate * durMs) / 1000
             for (i in 0 until count) {
                 if (cursor >= totalSamples) break
-                val env = if (i < count * 0.1) (i / (count * 0.1))
-                else if (i > count * 0.85) ((count - i) / (count * 0.15))
-                else 1.0
+                val t = i.toDouble() / count.toDouble()
+                // Smooth acoustic bell decay (removes harsh 8-bit/Mario square-wave feel)
+                val attack = if (t < 0.04) t / 0.04 else 1.0
+                val decay = kotlin.math.exp(-3.2 * t)
+                val env = attack * decay
                 val angle = 2.0 * PI * i * freq / sampleRate
-                val raw = (sin(angle) * 0.75 + sin(angle * 2.0) * 0.25) * env
-                pcm[cursor++] = (raw * Short.MAX_VALUE * 0.88).toInt().coerceIn(Short.MIN_VALUE.toInt(), Short.MAX_VALUE.toInt()).toShort()
+                val raw = (sin(angle) * 0.85 + sin(angle * 2.0) * 0.12 + sin(angle * 3.0) * 0.03) * env
+                pcm[cursor++] = (raw * Short.MAX_VALUE * 0.65).toInt()
+                    .coerceIn(Short.MIN_VALUE.toInt(), Short.MAX_VALUE.toInt()).toShort()
             }
         }
 
         val track = AudioTrack.Builder()
             .setAudioAttributes(
                 AudioAttributes.Builder()
-                    .setUsage(AudioAttributes.USAGE_ALARM)
+                    .setUsage(AudioAttributes.USAGE_NOTIFICATION_EVENT)
                     .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
                     .build()
             )
@@ -464,7 +467,7 @@ object VirusXEffectsAndNotifications {
 
         track.write(pcm, 0, pcm.size)
         track.play()
-        Thread.sleep(totalMs.toLong() + 120L)
+        Thread.sleep(totalMs.toLong() + 100L)
         track.stop()
         track.release()
     }
