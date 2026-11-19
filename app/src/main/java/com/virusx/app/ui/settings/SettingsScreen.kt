@@ -101,8 +101,6 @@ fun SettingsScreen(
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-        VirusXThemeAppearanceCard()
-
             Row(verticalAlignment = Alignment.CenterVertically) {
                 IconButton(onClick = onBack) {
                     Icon(
@@ -117,6 +115,8 @@ fun SettingsScreen(
                     color = TextPrimary
                 )
             }
+
+            VirusXThemeAppearanceCard()
 
             state.statusMessage?.let { msg ->
                 Text(

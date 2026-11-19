@@ -537,8 +537,8 @@ private fun AdminBroadcastAndSecurityTab(
 ) {
     var title by remember { mutableStateOf("") }
     var body by remember { mutableStateOf("") }
-    var verCode by remember { mutableStateOf("8") }
-    var verName by remember { mutableStateOf("1.0.7") }
+    var verCode by remember { mutableStateOf("15") }
+    var verName by remember { mutableStateOf("1.0.14") }
     var apkUrl by remember { mutableStateOf("") }
     var notes by remember { mutableStateOf("تحديث جديد يتضمن إضافات وتحسينات في الأداء") }
     var forceUpdate by remember { mutableStateOf(false) }

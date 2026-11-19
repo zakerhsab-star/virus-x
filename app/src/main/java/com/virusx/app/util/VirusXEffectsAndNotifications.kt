@@ -1,5 +1,8 @@
 package com.virusx.app.util
 
+import android.media.MediaPlayer
+import com.virusx.app.R
+
 import android.Manifest
 import android.app.Activity
 import android.app.NotificationChannel
@@ -101,6 +104,7 @@ object VirusXEffectsAndNotifications {
     }
 
     fun startBackgroundMonitorService(context: Context) {
+        appContext = context.applicationContext
         if (isMonitorServiceStarted) return
         isMonitorServiceStarted = true
         runCatching {
@@ -400,79 +404,25 @@ object VirusXEffectsAndNotifications {
     }
 
     fun playSoundEffect(effectKey: String) {
-        CoroutineScope(Dispatchers.Default).launch {
-            runCatching {
-                when (effectKey.uppercase()) {
-                    "SIREN" -> playSynthWave(
-                        listOf(
-                            880.0 to 250, 1320.0 to 250,
-                            880.0 to 250, 1320.0 to 280,
-                            980.0 to 250, 1480.0 to 320,
-                            880.0 to 250, 1320.0 to 380
-                        )
-                    )
-                    "AIRHORN" -> playSynthWave(listOf(480.0 to 160, 480.0 to 160, 480.0 to 520))
-                    "DRUMROLL" -> playSynthWave(listOf(180.0 to 90, 200.0 to 90, 220.0 to 90, 250.0 to 90, 300.0 to 120, 620.0 to 380))
-                    "SHOCK" -> playSynthWave(listOf(1500.0 to 80, 600.0 to 80, 1650.0 to 110, 420.0 to 280))
-                    "VICTORY" -> playSynthWave(listOf(523.25 to 140, 659.25 to 140, 783.99 to 160, 1046.50 to 400))
-                    "GAMEOVER" -> playSynthWave(listOf(600.0 to 200, 540.0 to 200, 480.0 to 220, 360.0 to 500))
-                    else -> {
-                        val tg = ToneGenerator(AudioManager.STREAM_MUSIC, 100)
-                        tg.startTone(ToneGenerator.TONE_PROP_BEEP2, 350)
-                        delay(400)
-                        tg.release()
-                    }
-                }
-            }
+        val ctx = appContext ?: return
+        val resId = when (effectKey.uppercase()) {
+            "DRUM", "DRUMS", "DRUMROLL", "DRUM_ROLL" -> R.raw.sfx_drum_roll
+            "VICTORY", "WIN", "CLAP", "APPLAUSE" -> R.raw.sfx_victory
+            "GAMEOVER", "LOSE", "FAIL", "SHOCK" -> R.raw.sfx_gameover
+            "ALARM", "SIREN", "EMERGENCY", "PING", "AIRHORN" -> R.raw.sfx_alarm
+            else -> R.raw.sfx_pop
         }
-    }
-
-    private fun playSynthWave(notes: List<Pair<Double, Int>>) {
-        val sampleRate = 22050
-        val totalMs = notes.sumOf { it.second }
-        val totalSamples = (sampleRate * totalMs) / 1000
-        val pcm = ShortArray(totalSamples)
-        var cursor = 0
-
-        for ((freq, durMs) in notes) {
-            val count = (sampleRate * durMs) / 1000
-            for (i in 0 until count) {
-                if (cursor >= totalSamples) break
-                val t = i.toDouble() / count.toDouble()
-                // Smooth acoustic bell decay (removes harsh 8-bit/Mario square-wave feel)
-                val attack = if (t < 0.04) t / 0.04 else 1.0
-                val decay = kotlin.math.exp(-3.2 * t)
-                val env = attack * decay
-                val angle = 2.0 * PI * i * freq / sampleRate
-                val raw = (sin(angle) * 0.85 + sin(angle * 2.0) * 0.12 + sin(angle * 3.0) * 0.03) * env
-                pcm[cursor++] = (raw * Short.MAX_VALUE * 0.65).toInt()
-                    .coerceIn(Short.MIN_VALUE.toInt(), Short.MAX_VALUE.toInt()).toShort()
+        runCatching {
+            val mp = MediaPlayer.create(ctx, resId) ?: return
+            mp.setOnCompletionListener { player ->
+                runCatching { player.release() }
             }
+            mp.setOnErrorListener { player, _, _ ->
+                runCatching { player.release() }
+                true
+            }
+            mp.start()
         }
-
-        val track = AudioTrack.Builder()
-            .setAudioAttributes(
-                AudioAttributes.Builder()
-                    .setUsage(AudioAttributes.USAGE_NOTIFICATION_EVENT)
-                    .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
-                    .build()
-            )
-            .setAudioFormat(
-                AudioFormat.Builder()
-                    .setEncoding(AudioFormat.ENCODING_PCM_16BIT)
-                    .setSampleRate(sampleRate)
-                    .setChannelMask(AudioFormat.CHANNEL_OUT_MONO)
-                    .build()
-            )
-            .setBufferSizeInBytes(pcm.size * 2)
-            .setTransferMode(AudioTrack.MODE_STATIC)
-            .build()
-
-        track.write(pcm, 0, pcm.size)
-        track.play()
-        Thread.sleep(totalMs.toLong() + 100L)
-        track.stop()
-        track.release()
     }
 }
 

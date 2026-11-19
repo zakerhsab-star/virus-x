@@ -745,6 +745,23 @@ fun ChatScreen(
                 }
             }
 
+            if (typingUsers.isNotEmpty()) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 14.dp, vertical = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    VirusXTypingIndicatorBubble()
+                    Text(
+                        text = "${typingUsers.values.joinToString("، ")} يكتب الآن...",
+                        color = TextSecondary,
+                        fontSize = 11.5.sp
+                    )
+                }
+            }
+
             // Automatic @Mention Popup when user types '@'
             if (mentionQuery != null) {
                 val filteredMembers = state.members.filter {
@@ -2168,21 +2185,54 @@ private fun MessageBubbleItem(
         return
     }
 
+    val bubbleCtx = LocalContext.current
     val destructSec: Int = message.destructSeconds ?: 0
-    var remainingSeconds by remember(message.id, destructSec, message.isDeleted) {
-        mutableIntStateOf(if (!message.isDeleted && destructSec > 0) destructSec else 0)
+    val alreadyExpiredLocally = remember(message.id, message.isDeleted) {
+        destructSec > 0 && ActiveChatTracker.isMessageExpired(bubbleCtx, message.id)
     }
+    val initialRemainingSec = remember(message.id, destructSec, message.createdAt, message.isDeleted) {
+        if (message.isDeleted || destructSec <= 0 || alreadyExpiredLocally) {
+            0
+        } else {
+            runCatching {
+                val created = message.createdAt?.let { Instant.parse(it) }
+                if (created != null) {
+                    val elapsed = ChronoUnit.SECONDS.between(created, Instant.now()).toInt().coerceAtLeast(0)
+                    (destructSec - elapsed).coerceAtLeast(0)
+                } else destructSec
+            }.getOrDefault(destructSec)
+        }
+    }
+    var remainingSeconds by remember(message.id, destructSec, message.isDeleted) {
+        mutableIntStateOf(initialRemainingSec)
+    }
+    var isDestructedNow by remember(message.id, message.isDeleted) {
+        mutableStateOf(alreadyExpiredLocally || (!message.isDeleted && destructSec > 0 && initialRemainingSec <= 0))
+    }
+
     LaunchedEffect(message.id, destructSec, message.isDeleted) {
         if (!message.isDeleted && destructSec > 0) {
-            var left: Int = destructSec
-            while (left > 0) {
-                remainingSeconds = left
-                delay(1000L)
-                left -= 1
+            if (initialRemainingSec <= 0) {
+                isDestructedNow = true
+                ActiveChatTracker.markMessageExpired(bubbleCtx, message.id)
+                onExpireSelfDestruct()
+            } else {
+                var left = initialRemainingSec
+                while (left > 0) {
+                    remainingSeconds = left
+                    delay(1000L)
+                    left -= 1
+                }
+                remainingSeconds = 0
+                isDestructedNow = true
+                ActiveChatTracker.markMessageExpired(bubbleCtx, message.id)
+                onExpireSelfDestruct()
             }
-            remainingSeconds = 0
-            onExpireSelfDestruct()
         }
+    }
+
+    if (isDestructedNow && !message.isDeleted) {
+        return
     }
 
     val reactionData = remember(message.reactionsJson) {
@@ -2499,7 +2549,7 @@ private fun MessageBubbleItem(
                         }
                         Text(
                             text = styledText,
-                            color = TextPrimary,
+                            color = if (isMine) Color.White else TextPrimary,
                             fontSize = 15.sp,
                             lineHeight = 21.sp
                         )
