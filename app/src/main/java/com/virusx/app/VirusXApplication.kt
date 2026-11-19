@@ -1,5 +1,7 @@
 package com.virusx.app
 
+import com.virusx.app.util.VirusXEffectsAndNotifications
+
 import android.app.Application
 import android.app.NotificationChannel
 import android.app.NotificationManager
@@ -12,6 +14,7 @@ class VirusXApplication : Application() {
 
     override fun onCreate() {
         super.onCreate()
+        VirusXEffectsAndNotifications.init(this)
         createNotificationChannels()
     }
 

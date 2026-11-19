@@ -74,6 +74,8 @@ object VirusXThemeManager {
     private const val KEY_PALETTE = "accent_palette"
 
     private val _config = MutableStateFlow(VirusXThemeConfig())
+    var currentScheme by mutableStateOf(buildColorScheme(VirusXThemeConfig()))
+        private set
     val config: StateFlow<VirusXThemeConfig> = _config.asStateFlow()
 
     @Volatile
@@ -87,19 +89,25 @@ object VirusXThemeManager {
         val palName = prefs.getString(KEY_PALETTE, VirusXAccentPalette.CLASSIC_BLUE.name)
         val pal = runCatching { VirusXAccentPalette.valueOf(palName ?: "") }
             .getOrDefault(VirusXAccentPalette.CLASSIC_BLUE)
-        _config.value = VirusXThemeConfig(isDarkMode = isDark, palette = pal)
+        val cfg = VirusXThemeConfig(isDarkMode = isDark, palette = pal)
+        _config.value = cfg
+        currentScheme = buildColorScheme(cfg)
     }
 
     fun setDarkMode(context: Context, isDark: Boolean) {
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
             .edit().putBoolean(KEY_DARK, isDark).apply()
-        _config.value = _config.value.copy(isDarkMode = isDark)
+        val cfg = _config.value.copy(isDarkMode = isDark)
+        _config.value = cfg
+        currentScheme = buildColorScheme(cfg)
     }
 
     fun setPalette(context: Context, palette: VirusXAccentPalette) {
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
             .edit().putString(KEY_PALETTE, palette.name).apply()
-        _config.value = _config.value.copy(palette = palette)
+        val cfg = _config.value.copy(palette = palette)
+        _config.value = cfg
+        currentScheme = buildColorScheme(cfg)
     }
 
     fun buildColorScheme(cfg: VirusXThemeConfig): ColorScheme {
