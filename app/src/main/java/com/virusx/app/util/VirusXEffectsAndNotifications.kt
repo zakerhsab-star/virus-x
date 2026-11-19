@@ -53,6 +53,9 @@ import kotlin.math.PI
 import kotlin.math.sin
 
 object VirusXEffectsAndNotifications {
+    @Volatile private var appContext: Context? = null
+    fun init(context: Context) { appContext = context.applicationContext }
+
     private const val CHANNEL_MESSAGES = "virusx_messages_channel"
     private const val CHANNEL_EMERGENCY = "virusx_emergency_channel_v2"
     const val CHANNEL_MONITOR_BG = "virusx_bg_monitor_channel"

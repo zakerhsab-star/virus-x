@@ -72,7 +72,7 @@ class AuthViewModel @Inject constructor(
             _uiState.update { it.copy(isLoading = true, errorMessage = null) }
             if (state.isSignUpMode) {
                 authRepository.signUp(
-                    email = state.email,
+                    email = state.email.trim(),
                     password = state.password,
                     username = state.username,
                     displayName = state.displayName,
@@ -104,7 +104,7 @@ class AuthViewModel @Inject constructor(
                 )
             } else {
                 authRepository.signIn(
-                    email = state.email,
+                    email = state.email.trim(),
                     password = state.password
                 ).fold(
                     onSuccess = {
