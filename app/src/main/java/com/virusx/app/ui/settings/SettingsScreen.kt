@@ -1,5 +1,7 @@
 package com.virusx.app.ui.settings
 
+import com.virusx.app.ui.theme.VirusXThemeAppearanceCard
+
 import com.virusx.app.ui.components.AccountSwitcherCard
 
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -99,6 +101,8 @@ fun SettingsScreen(
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
+        VirusXThemeAppearanceCard()
+
             Row(verticalAlignment = Alignment.CenterVertically) {
                 IconButton(onClick = onBack) {
                     Icon(
