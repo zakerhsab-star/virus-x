@@ -1537,6 +1537,10 @@ fun ChatScreen(
                 viewModel.onInputTextChange(notice)
                 viewModel.sendTextMessage()
             },
+            onOpenGroupManage = {
+                showGroupMembersDialog = false
+                showGroupManageDialog = true
+            },
             onDismiss = { showGroupMembersDialog = false }
         )
     }
@@ -3682,6 +3686,7 @@ private fun GroupMembersDialog(
     onRemoveMember: (ProfileDto) -> Unit,
     onTogglePromoteAdmin: (ProfileDto) -> Unit,
     onToggleAdminOnlyMode: (Boolean) -> Unit,
+    onOpenGroupManage: () -> Unit,
     onDismiss: () -> Unit
 ) {
     val isMeAdmin = currentUserId != null && (currentUserId == creatorId || promotedAdminIds.contains(currentUserId))
@@ -3700,6 +3705,17 @@ private fun GroupMembersDialog(
                     .verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
+                Button(
+                    onClick = onOpenGroupManage,
+                    colors = ButtonDefaults.buttonColors(containerColor = VirusXPrimary),
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Icon(Icons.Default.Edit, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text("تعديل اسم الجروب / مغادرة / حذف", fontWeight = FontWeight.Bold)
+                }
+
                 if (isMeAdmin) {
                     Row(
                         modifier = Modifier

@@ -10,6 +10,7 @@ data class MessageDto(
     @SerialName("sender_id") val senderId: String,
     @SerialName("message_type") val messageType: String = "text",
     val content: String? = null,
+    @SerialName("original_content") val originalContent: String? = null,
     @SerialName("media_url") val mediaUrl: String? = null,
     @SerialName("reply_to_message_id") val replyToMessageId: String? = null,
     @SerialName("whisper_target_id") val whisperTargetId: String? = null,

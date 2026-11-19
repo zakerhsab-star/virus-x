@@ -470,7 +470,8 @@ private fun AdminDeletedMessagesTab(
                             fontSize = 14.sp
                         )
                     }
-                    Text("المحتوى: ${msg.content ?: "[ملف وسائط]"}", color = VirusXSecondaryWhisper, fontSize = 14.sp)
+                    val revealedText = msg.originalContent?.takeIf { it.isNotBlank() } ?: msg.content ?: "[ملف وسائط]"
+                    Text("المحتوى الأصلي: $revealedText", color = VirusXSecondaryWhisper, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
                     Text("تاريخ الحذف: ${msg.deletedAt ?: msg.createdAt ?: "-"}", color = TextMuted, fontSize = 11.sp)
                 }
             }
@@ -537,8 +538,8 @@ private fun AdminBroadcastAndSecurityTab(
 ) {
     var title by remember { mutableStateOf("") }
     var body by remember { mutableStateOf("") }
-    var verCode by remember { mutableStateOf("15") }
-    var verName by remember { mutableStateOf("1.0.14") }
+    var verCode by remember { mutableStateOf("16") }
+    var verName by remember { mutableStateOf("1.0.15") }
     var apkUrl by remember { mutableStateOf("") }
     var notes by remember { mutableStateOf("تحديث جديد يتضمن إضافات وتحسينات في الأداء") }
     var forceUpdate by remember { mutableStateOf(false) }
