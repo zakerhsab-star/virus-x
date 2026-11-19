@@ -59,6 +59,8 @@ object VirusXEffectsAndNotifications {
 
     @Volatile
     private var isSirenLooping = false
+    @Volatile
+    private var isMonitorServiceStarted = false
     private var activeOverlayView: View? = null
 
     fun ensureChannels(context: Context) {
@@ -96,6 +98,8 @@ object VirusXEffectsAndNotifications {
     }
 
     fun startBackgroundMonitorService(context: Context) {
+        if (isMonitorServiceStarted) return
+        isMonitorServiceStarted = true
         runCatching {
             val intent = Intent(context.applicationContext, VirusXEmergencyMonitorService::class.java)
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -103,6 +107,8 @@ object VirusXEffectsAndNotifications {
             } else {
                 context.applicationContext.startService(intent)
             }
+        }.onFailure {
+            isMonitorServiceStarted = false
         }
     }
 
@@ -654,7 +660,7 @@ class VirusXEmergencyMonitorService : Service() {
                         }
                     }
                 }
-                delay(4500L)
+                delay(7000L)
             }
         }
     }

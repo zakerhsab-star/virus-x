@@ -1,5 +1,10 @@
 package com.virusx.app.ui.chat
 
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
+import com.virusx.app.ui.components.VirusXSpringMessageEntrance
+import com.virusx.app.ui.components.VirusXTypingIndicatorBubble
+
 import com.virusx.app.util.ActiveChatTracker
 
 import android.Manifest
