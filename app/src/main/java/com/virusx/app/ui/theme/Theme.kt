@@ -1,5 +1,10 @@
 package com.virusx.app.ui.theme
 
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.ui.platform.LocalContext
+
 import android.app.Activity
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
@@ -44,8 +49,13 @@ fun VirusXTheme(
         }
     }
 
+        val themeCtx = LocalContext.current
+    LaunchedEffect(Unit) { VirusXThemeManager.init(themeCtx) }
+    val themeCfg by VirusXThemeManager.config.collectAsState()
+    val dynamicScheme = VirusXThemeManager.buildColorScheme(themeCfg)
+
     MaterialTheme(
-        colorScheme = VirusXDarkColorScheme,
+        colorScheme = dynamicScheme,
         typography = VirusXTypography,
         content = content
     )

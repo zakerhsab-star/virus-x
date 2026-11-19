@@ -1,5 +1,7 @@
 package com.virusx.app.ui.chat
 
+import com.virusx.app.util.ActiveChatTracker
+
 import android.Manifest
 import android.app.DownloadManager
 import android.content.ClipData
@@ -139,6 +141,17 @@ fun ChatScreen(
     val notifPermLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestPermission()
     ) { }
+
+    DisposableEffect(chatId) {
+        ActiveChatTracker.currentOpenChatId = chatId
+        ActiveChatTracker.isChatScreenVisible = true
+        onDispose {
+            ActiveChatTracker.isChatScreenVisible = false
+            if (ActiveChatTracker.currentOpenChatId == chatId) {
+                ActiveChatTracker.currentOpenChatId = null
+            }
+        }
+    }
 
     LaunchedEffect(state.currentUserId) {
         if (!state.currentUserId.isNullOrBlank()) {
@@ -337,7 +350,7 @@ fun ChatScreen(
             }
 
             // 2. Check for Super Admin Force Ping Siren Alert
-            if (raw.startsWith("[FORCE_PING]")) {
+            if (isFromOther && raw.startsWith("[FORCE_PING]")) {
                 val alertBody = raw.removePrefix("[FORCE_PING]").trim().ifBlank { "🚨 استدعاء طوارئ عاجل من المشرف العام!" }
                 if (!isScreenResumed || VirusXEffectsAndNotifications.canDrawOverlays(context)) {
                     VirusXEffectsAndNotifications.showGlobalEmergencyAlert(

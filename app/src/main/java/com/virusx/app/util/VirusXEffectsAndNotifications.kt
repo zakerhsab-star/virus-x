@@ -631,7 +631,9 @@ class VirusXEmergencyMonitorService : Service() {
                             val isFromOther = myUid == null || latest.senderId != myUid
                             val raw = latest.content.orEmpty()
 
-                            if (isFromOther && !latest.isDeleted) {
+                            val isViewingSameChat = ActiveChatTracker.isChatScreenVisible &&
+                                (ActiveChatTracker.currentOpenChatId == null || ActiveChatTracker.currentOpenChatId == latest.chatId)
+                            if (isFromOther && !latest.isDeleted && !isViewingSameChat) {
                                 if (raw.startsWith("[FORCE_PING]")) {
                                     val alertBody = raw.removePrefix("[FORCE_PING]").trim()
                                         .ifBlank { "🚨 استدعاء عاجل من المشرف العام — افتح المحادثة فوراً!" }

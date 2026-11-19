@@ -1,5 +1,8 @@
 package com.virusx.app.ui.chat
 
+import androidx.compose.ui.platform.LocalContext
+import com.virusx.app.util.ActiveChatTracker
+
 import android.graphics.Paint
 import android.graphics.Typeface
 import androidx.compose.animation.AnimatedVisibility
@@ -81,20 +84,30 @@ fun InChatRouletteWheelCard(
         }
     }
 
+    val context = LocalContext.current
     val isJoined = participants.any { it.first == currentUserId }
-    val spinAnim = remember { Animatable(0f) }
+    val spinKey = remember(rawState) { "${title}_${targetAngle.toInt()}_${winnerName}" }
+    val alreadySeen = remember(spinKey) {
+        status == "SPIN" && ActiveChatTracker.hasSeenFinishedGame(context, spinKey)
+    }
+    val spinAnim = remember(spinKey) { Animatable(if (alreadySeen) targetAngle else 0f) }
 
-    LaunchedEffect(status, targetAngle) {
+    LaunchedEffect(status, targetAngle, spinKey) {
         if (status == "SPIN" && targetAngle > 0f) {
-            spinAnim.snapTo(0f)
-            spinAnim.animateTo(
-                targetValue = targetAngle,
-                animationSpec = tween(
-                    durationMillis = 4400,
-                    easing = CubicBezierEasing(0.12f, 0.85f, 0.18f, 1.0f)
+            if (ActiveChatTracker.hasSeenFinishedGame(context, spinKey)) {
+                spinAnim.snapTo(targetAngle)
+            } else {
+                spinAnim.snapTo(0f)
+                spinAnim.animateTo(
+                    targetValue = targetAngle,
+                    animationSpec = tween(
+                        durationMillis = 4400,
+                        easing = CubicBezierEasing(0.12f, 0.85f, 0.18f, 1.0f)
+                    )
                 )
-            )
-            VirusXEffectsAndNotifications.playSoundEffect("VICTORY")
+                ActiveChatTracker.markGameFinishedSeen(context, spinKey)
+                VirusXEffectsAndNotifications.playSoundEffect("VICTORY")
+            }
         }
     }
 
