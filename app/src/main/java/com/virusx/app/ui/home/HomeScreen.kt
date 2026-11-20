@@ -401,7 +401,7 @@ fun HomeScreen(
                                         .background(if (selected) colors.primary else colors.surface)
                                         .border(
                                             1.dp,
-                                            if (selected) colors.primary else VirusXThemeManager.buildGlassBorderBrush(),
+                                            if (selected) Brush.linearGradient(listOf(colors.primary, colors.primary)) else VirusXThemeManager.buildGlassBorderBrush(),
                                             RoundedCornerShape(14.dp)
                                         )
                                         .clickable { activeChatFilter = key }
