@@ -7,6 +7,7 @@ plugins {
     alias(libs.plugins.kotlin.serialization)
     alias(libs.plugins.ksp)
     alias(libs.plugins.hilt)
+    id("com.google.gms.google-services") version "4.4.2"
 }
 
 val localProps = Properties().apply {
@@ -43,8 +44,8 @@ android {
         applicationId = "com.virusx.app"
         minSdk = 26
         targetSdk = 35
-        versionCode = 16
-        versionName = "1.0.15"
+        versionCode = 17
+        versionName = "1.0.16"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
@@ -144,4 +145,7 @@ dependencies {
     implementation(libs.media3.common)
 
     implementation(libs.datastore.preferences)
+
+    implementation(platform("com.google.firebase:firebase-bom:33.7.0"))
+    implementation("com.google.firebase:firebase-messaging-ktx")
 }

@@ -6,16 +6,20 @@ import androidx.compose.ui.graphics.Color
 val VirusXBackground: Color get() = VirusXThemeManager.currentScheme.background
 val VirusXSurface: Color get() = VirusXThemeManager.currentScheme.surface
 val VirusXSurfaceElevated: Color get() = VirusXThemeManager.currentScheme.surfaceVariant
-val VirusXGlassBorder: Color get() = VirusXThemeManager.currentScheme.onSurface.copy(alpha = 0.09f)
-val VirusXGlassSurface: Color get() = VirusXThemeManager.currentScheme.surface.copy(alpha = 0.92f)
+val VirusXGlassBorder: Color get() = if (VirusXThemeManager.activeConfigState.isDarkMode) {
+    VirusXThemeManager.activeConfigState.palette.borderGlowDark.copy(alpha = 0.40f)
+} else {
+    VirusXThemeManager.activeConfigState.palette.borderGlowLight.copy(alpha = 0.34f)
+}
+val VirusXGlassSurface: Color get() = VirusXThemeManager.currentScheme.surface
 val VirusXPrimary: Color get() = VirusXThemeManager.currentScheme.primary
 val VirusXPrimaryVariant: Color get() = VirusXThemeManager.currentScheme.secondary
 val VirusXSecondaryWhisper: Color get() = VirusXThemeManager.currentScheme.primary
-val VirusXWhisperSurface: Color get() = if (VirusXThemeManager.config.value.isDarkMode) Color(0xFF0C2A36) else Color(0xFFE0F2FE)
+val VirusXWhisperSurface: Color get() = if (VirusXThemeManager.activeConfigState.isDarkMode) Color(0xFF0C2A36) else Color(0xFFE0F2FE)
 
 val SentBubbleStart: Color get() = VirusXThemeManager.currentScheme.primary
 val SentBubbleEnd: Color get() = VirusXThemeManager.currentScheme.secondary
-val ReceivedBubbleColor: Color get() = if (VirusXThemeManager.config.value.isDarkMode) Color(0xFF1E2732) else Color(0xFFEFF3F8)
+val ReceivedBubbleColor: Color get() = VirusXThemeManager.currentScheme.surfaceVariant
 
 val SentMessageGradient: Brush
     get() = Brush.linearGradient(

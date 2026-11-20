@@ -1,5 +1,8 @@
 package com.virusx.app.ui.settings
 
+import androidx.compose.ui.graphics.Color
+import com.virusx.app.ui.theme.VirusXAppBackground
+
 import com.virusx.app.ui.theme.VirusXThemeAppearanceCard
 
 import com.virusx.app.ui.components.AccountSwitcherCard
@@ -90,8 +93,9 @@ fun SettingsScreen(
         }
     }
 
+    VirusXAppBackground {
     Scaffold(
-        containerColor = VirusXBackground
+        containerColor = Color.Transparent
     ) { paddingValues ->
         Column(
             modifier = Modifier
@@ -340,6 +344,8 @@ fun SettingsScreen(
                 onTap = viewModel::onVersionNumberTapped
             )
         }
+    }
+
     }
 
     if (state.showVaultPinDialog) {

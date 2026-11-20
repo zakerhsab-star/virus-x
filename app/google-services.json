@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "481710416296",
+    "project_id": "virusx-a40f9",
+    "storage_bucket": "virusx-a40f9.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:481710416296:android:f5ac352d1828d5ea47fd9d",
+        "android_client_info": {
+          "package_name": "com.virusx.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyD3PA4AoxMXuGDfb4LSKSXDFgMOR7ZwBS4"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

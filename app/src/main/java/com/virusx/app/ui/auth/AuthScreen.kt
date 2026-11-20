@@ -1,5 +1,14 @@
 package com.virusx.app.ui.auth
 
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.ui.draw.scale
+import androidx.compose.ui.draw.shadow
+import com.virusx.app.ui.theme.VirusXAppBackground
+import com.virusx.app.ui.theme.VirusXThemeManager
+
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.tween
@@ -98,6 +107,13 @@ fun AuthScreen(
     }
 
     val colors = MaterialTheme.colorScheme
+    val pulseTrans = rememberInfiniteTransition(label = "logoPulse")
+    val logoScale by pulseTrans.animateFloat(
+        initialValue = 1.0f,
+        targetValue = 1.07f,
+        animationSpec = infiniteRepeatable(tween(1800), RepeatMode.Reverse),
+        label = "logoScale"
+    )
     val subtleBorder = colors.onSurface.copy(alpha = 0.08f)
 
     VirusXAmbientAuthBackground {
@@ -111,7 +127,7 @@ fun AuthScreen(
                 modifier = Modifier
                     .fillMaxWidth()
                     .offset { IntOffset(shakeOffset.value.roundToInt(), 0) }
-                    .border(1.dp, subtleBorder, RoundedCornerShape(28.dp)),
+                    .border(1.3.dp, VirusXThemeManager.buildGlassBorderBrush(), RoundedCornerShape(28.dp)),
                 shape = RoundedCornerShape(28.dp),
                 color = colors.surface.copy(alpha = 0.96f),
                 tonalElevation = 4.dp,
@@ -126,8 +142,10 @@ fun AuthScreen(
                 ) {
                     Box(
                         modifier = Modifier
-                            .size(64.dp)
-                            .clip(RoundedCornerShape(20.dp))
+                            .size(68.dp)
+                            .scale(logoScale)
+                            .shadow(14.dp, RoundedCornerShape(22.dp), ambientColor = colors.primary, spotColor = colors.primary)
+                            .clip(RoundedCornerShape(22.dp))
                             .background(
                                 Brush.linearGradient(
                                     listOf(colors.primary, colors.secondary)

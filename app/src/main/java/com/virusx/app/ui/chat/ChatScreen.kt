@@ -1,5 +1,14 @@
 package com.virusx.app.ui.chat
 
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
+import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.lazy.itemsIndexed
+import com.virusx.app.ui.theme.VirusXAppBackground
+
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalHapticFeedback
 import com.virusx.app.ui.components.VirusXSpringMessageEntrance
@@ -559,8 +568,9 @@ fun ChatScreen(
         }
     }
 
+    VirusXAppBackground {
     Scaffold(
-        containerColor = VirusXBackground,
+        containerColor = Color.Transparent,
         topBar = {
             Column {
                 ChatTopBar(
@@ -687,7 +697,12 @@ fun ChatScreen(
                 contentPadding = PaddingValues(vertical = 12.dp),
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
-                items(messages, key = { it.id }) { msg ->
+                itemsIndexed(messages, key = { _, m -> m.id }) { idx, msg ->
+                    val prevMsg = messages.getOrNull(idx - 1)
+                    val isGroupedWithPrev = prevMsg != null &&
+                        prevMsg.senderId == msg.senderId &&
+                        !prevMsg.isDeleted &&
+                        !msg.isDeleted
                     val isMine = msg.senderId == state.currentUserId
                     val senderProfile = memberMap[msg.senderId]
                     val whisperTargetProfile = msg.whisperTargetId?.let { memberMap[it] }
@@ -698,6 +713,7 @@ fun ChatScreen(
 
                     MessageBubbleItem(
                         message = msg,
+                        isGroupedWithPrev = isGroupedWithPrev,
                         isMine = isMine,
                         isGroup = state.isGroup,
                         peerOnline = verifiedPeerOnline,
@@ -912,6 +928,8 @@ fun ChatScreen(
         }
     }
 
+    }
+
     // Organized Plus (+) Bottom Sheet Menu (Replaces cluttered bottom chips!)
     if (showPlusMenuSheet) {
         ModalBottomSheet(
@@ -943,6 +961,17 @@ fun ChatScreen(
                         modifier = Modifier.weight(1f),
                         onClick = {
                             showPlusMenuSheet = false
+                            imagePickerLauncher.launch("image/*")
+                        }
+                    )
+                    PlusMenuTile(
+                        icon = "1️⃣",
+                        title = "صورة مرة واحدة",
+                        subtitle = "تختفي بعد الفتح",
+                        modifier = Modifier.weight(1f),
+                        onClick = {
+                            showPlusMenuSheet = false
+                            viewModel.onInputTextChange("[VIEW_ONCE_IMG]")
                             imagePickerLauncher.launch("image/*")
                         }
                     )
@@ -2141,6 +2170,7 @@ private fun CleanSingleLineComposer(
 @Composable
 private fun MessageBubbleItem(
     message: MessageEntity,
+    isGroupedWithPrev: Boolean = false,
     isMine: Boolean,
     isGroup: Boolean,
     peerOnline: Boolean,
@@ -2298,11 +2328,15 @@ private fun MessageBubbleItem(
             horizontalArrangement = if (isMine) Arrangement.End else Arrangement.Start
         ) {
             if (!isMine) {
-                AvatarCircle(
-                    displayName = senderName,
-                    avatarUrl = senderAvatarUrl,
-                    sizeDp = 32
-                )
+                if (!isGroupedWithPrev) {
+                    AvatarCircle(
+                        displayName = senderName,
+                        avatarUrl = senderAvatarUrl,
+                        sizeDp = 32
+                    )
+                } else {
+                    Spacer(modifier = Modifier.width(32.dp))
+                }
                 Spacer(modifier = Modifier.width(6.dp))
             }
 
@@ -2335,12 +2369,15 @@ private fun MessageBubbleItem(
                                 onOpenFullImage(urlToOpen)
                             }
                         },
+                        onDoubleClick = {
+                            if (!message.isDeleted) onToggleReaction("❤️")
+                        },
                         onLongClick = onLongPress
                     )
                     .padding(horizontal = 13.dp, vertical = 9.dp)
             ) {
-                // Sender Header + Custom Super Admin Badge
-                Row(
+                // Sender Header + Custom Super Admin Badge (hidden when grouped with previous message)
+                if (!isGroupedWithPrev) Row(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(6.dp),
                     modifier = Modifier.padding(bottom = 4.dp)
@@ -2502,7 +2539,39 @@ private fun MessageBubbleItem(
                     }
                     message.messageType == "image" -> {
                         val imgUrl = message.mediaUrl
-                        if (!imgUrl.isNullOrBlank()) {
+                        val isViewOnceImg = rawContent.startsWith("[VIEW_ONCE_IMG]")
+                        val alreadyViewedOnce = remember(message.id, isViewOnceImg) {
+                            isViewOnceImg && ActiveChatTracker.isMessageExpired(bubbleCtx, "vo_${message.id}")
+                        }
+                        if (isViewOnceImg && !isMine) {
+                            if (alreadyViewedOnce) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                    modifier = Modifier.padding(vertical = 4.dp)
+                                ) {
+                                    Icon(Icons.Default.Lock, contentDescription = null, tint = TextMuted, modifier = Modifier.size(16.dp))
+                                    Text("🔒 تم فتح الصورة لمرة واحدة وانتهت", color = TextMuted, fontSize = 12.sp, fontStyle = FontStyle.Italic)
+                                }
+                            } else if (!imgUrl.isNullOrBlank()) {
+                                Row(
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(12.dp))
+                                        .background(WarningAmber.copy(alpha = 0.16f))
+                                        .border(1.dp, WarningAmber, RoundedCornerShape(12.dp))
+                                        .clickable {
+                                            ActiveChatTracker.markMessageExpired(bubbleCtx, "vo_${message.id}")
+                                            onOpenFullImage(imgUrl)
+                                        }
+                                        .padding(horizontal = 12.dp, vertical = 10.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    Icon(Icons.Default.Visibility, contentDescription = null, tint = WarningAmber)
+                                    Text("1️⃣ صورة للعرض لمرة واحدة — اضغط للفتح", color = TextPrimary, fontWeight = FontWeight.Bold, fontSize = 12.5.sp)
+                                }
+                            }
+                        } else if (!imgUrl.isNullOrBlank()) {
                             AsyncImage(
                                 model = imgUrl,
                                 contentDescription = "صورة أو ملصق",

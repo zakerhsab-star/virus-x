@@ -105,18 +105,8 @@ object VirusXEffectsAndNotifications {
 
     fun startBackgroundMonitorService(context: Context) {
         appContext = context.applicationContext
-        if (isMonitorServiceStarted) return
-        isMonitorServiceStarted = true
-        runCatching {
-            val intent = Intent(context.applicationContext, VirusXEmergencyMonitorService::class.java)
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                context.applicationContext.startForegroundService(intent)
-            } else {
-                context.applicationContext.startService(intent)
-            }
-        }.onFailure {
-            isMonitorServiceStarted = false
-        }
+        // Replaced battery-draining foreground polling with instant Firebase Cloud Messaging (FCM)
+        VirusXFirebaseMessagingService.syncCurrentToken(context.applicationContext)
     }
 
     fun canDrawOverlays(context: Context): Boolean {

@@ -1,5 +1,15 @@
 package com.virusx.app.ui.home
 
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
+import androidx.compose.ui.draw.scale
+import androidx.compose.ui.draw.shadow
+import com.virusx.app.ui.theme.VirusXAppBackground
+import com.virusx.app.ui.theme.VirusXThemeManager
+import com.virusx.app.ui.theme.virusXGlassCard
+
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -89,6 +99,7 @@ fun HomeScreen(
     val visibleChats by viewModel.visibleChats.collectAsState()
     val otaProgress by viewModel.otaDownloadProgress.collectAsState()
     var showCreateGroupDialog by remember { mutableStateOf(false) }
+    var activeChatFilter by remember { mutableStateOf("all") }
     var selectedChatForVaultDialog by remember { mutableStateOf<ChatEntity?>(null) }
 
     val colors = MaterialTheme.colorScheme
@@ -140,20 +151,29 @@ fun HomeScreen(
         return
     }
 
-    val filteredChats = remember(visibleChats, state.searchQuery) {
+    val filteredChats = remember(visibleChats, state.searchQuery, activeChatFilter) {
+        val byTab = when (activeChatFilter) {
+            "direct" -> visibleChats.filter { it.type != "group" }
+            "group" -> visibleChats.filter { it.type == "group" }
+            else -> visibleChats
+        }
         if (state.searchQuery.isBlank()) {
-            visibleChats
+            byTab
         } else {
             val q = state.searchQuery.trim()
-            visibleChats.filter {
+            byTab.filter {
                 it.displayTitle.contains(q, ignoreCase = true) ||
                     (it.peerPhone?.contains(q, ignoreCase = true) == true)
             }
         }
     }
+    @Suppress("UNUSED_VARIABLE") val _unusedFilter = run {
+        Unit
+    }
 
+    VirusXAppBackground {
     Scaffold(
-        containerColor = colors.background,
+        containerColor = Color.Transparent,
         floatingActionButton = {
             FloatingActionButton(
                 onClick = { showCreateGroupDialog = true },
@@ -366,6 +386,39 @@ fun HomeScreen(
                     }
 
                     item {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 2.dp),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            listOf("all" to "الكل", "direct" to "خاص", "group" to "مجموعات").forEach { (key, label) ->
+                                val selected = activeChatFilter == key
+                                Box(
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(14.dp))
+                                        .background(if (selected) colors.primary else colors.surface)
+                                        .border(
+                                            1.dp,
+                                            if (selected) colors.primary else VirusXThemeManager.buildGlassBorderBrush(),
+                                            RoundedCornerShape(14.dp)
+                                        )
+                                        .clickable { activeChatFilter = key }
+                                        .padding(horizontal = 14.dp, vertical = 6.dp)
+                                ) {
+                                    Text(
+                                        text = label,
+                                        color = if (selected) Color.White else colors.onSurfaceVariant,
+                                        fontSize = 12.sp,
+                                        fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    item {
                         Text(
                             text = "المحادثات",
                             style = MaterialTheme.typography.labelLarge,
@@ -408,6 +461,8 @@ fun HomeScreen(
                 }
             }
         }
+    }
+
     }
 
     // In-App OTA Update Dialog
@@ -518,8 +573,10 @@ private fun HeaderActionIcon(
 ) {
     Surface(
         shape = CircleShape,
-        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.65f),
-        modifier = Modifier.size(40.dp)
+        color = MaterialTheme.colorScheme.surface,
+        modifier = Modifier
+            .size(40.dp)
+            .border(1.dp, VirusXThemeManager.buildGlassBorderBrush(), CircleShape)
     ) {
         IconButton(onClick = onClick) {
             Icon(
@@ -625,15 +682,21 @@ fun ChatRowItem(
     onLongClick: () -> Unit
 ) {
     val colors = MaterialTheme.colorScheme
-    Surface(
-        shape = RoundedCornerShape(18.dp),
-        color = colors.surface,
-        tonalElevation = 1.dp,
+    val interactionSource = remember { MutableInteractionSource() }
+    val isPressed by interactionSource.collectIsPressedAsState()
+    val cardScale by animateFloatAsState(
+        targetValue = if (isPressed) 0.97f else 1f,
+        animationSpec = spring(dampingRatio = 0.6f, stiffness = 500f),
+        label = "chatCardScale"
+    )
+    Box(
         modifier = Modifier
             .fillMaxWidth()
-            .border(1.dp, colors.onSurface.copy(alpha = 0.06f), RoundedCornerShape(18.dp))
-            .clip(RoundedCornerShape(18.dp))
+            .scale(cardScale)
+            .virusXGlassCard(RoundedCornerShape(18.dp), borderWidthDp = 1.15f)
             .combinedClickable(
+                interactionSource = interactionSource,
+                indication = null,
                 onClick = onClick,
                 onLongClick = onLongClick
             )
@@ -708,7 +771,7 @@ fun ChatRowItem(
                 Spacer(modifier = Modifier.height(4.dp))
 
                 Text(
-                    text = chat.lastMessagePreview ?: "لا توجد رسائل بعد",
+                    text = formatCleanChatPreview(chat.lastMessagePreview),
                     color = colors.onSurfaceVariant,
                     fontSize = 13.sp,
                     maxLines = 1,
@@ -756,4 +819,23 @@ private fun CreateGroupDialog(
             }
         }
     )
+}
+
+private fun formatCleanChatPreview(raw: String?): String {
+    if (raw.isNullOrBlank()) return "لا توجد رسائل بعد"
+    return when {
+        raw.startsWith("[SOUNDBOARD:") -> "🔊 مؤثر صوتي تفاعلي"
+        raw.startsWith("[VIEW_ONCE_IMG]") -> "🔒 صورة للعرض لمرة واحدة"
+        raw.startsWith("[GAME_DOMINO]") -> "🁣 طاولة دومينو"
+        raw.startsWith("[EVENT_ROULETTE]") -> "🎡 عجلة روليت"
+        raw.startsWith("[GAME_IMPOSTER]") -> "🕵️‍♂️ لعبة الأمبوستر"
+        raw.startsWith("[GAME_BOMB]") -> "💣 تحدي القنبلة"
+        raw.startsWith("[EVENT_HOTSEAT]") -> "⚖️ كرسي الاعتراف"
+        raw.startsWith("[GAME_XO]") -> "❌⭕ تحدي إكس أو"
+        raw.startsWith("[GAME_RPS]") -> "🪨📄✂️ حجر ورقة مقص"
+        raw.startsWith("[FORCE_PING]") -> "🚨 تنبيه طوارئ عاجل"
+        raw.startsWith("[STICKER]") -> "🎭 ملصق"
+        raw.startsWith("[BADGE_ASSIGN]") -> "👑 تحديث لقب عضو"
+        else -> raw
+    }
 }
